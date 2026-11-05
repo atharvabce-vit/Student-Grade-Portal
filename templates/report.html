@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="report">
+  <h2>Report Card</h2>
+
+  <div class="report-head">
+    <span class="who">{{ student.name }}</span>
+    <span class="reg">{{ student.reg_no }}</span>
+    <span class="result-badge {{ student.result|lower }}">{{ student.result }}</span>
+  </div>
+
+  <div class="cards">
+    <div class="stat"><span>Total</span><strong>{{ student.total }}</strong></div>
+    <div class="stat"><span>Percentage</span><strong>{{ "%.2f"|format(student.percentage) }}%</strong></div>
+    <div class="stat"><span>Grade</span><strong>{{ student.grade }}</strong></div>
+    <div class="stat"><span>Result</span><strong>{{ student.result }}</strong></div>
+  </div>
+
+  <h3>Subject marks</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Subject</th>
+        <th>Marks</th>
+        <th>Out of</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for subject in subjects %}
+      {% set mark = student.marks[loop.index0] %}
+      <tr>
+        <td>{{ subject }}</td>
+        <td>{{ mark }}</td>
+        <td>{{ max_mark }}</td>
+        <td class="{{ 'pass' if mark >= pass_mark else 'fail' }}">
+          {{ "Pass" if mark >= pass_mark else "Fail" }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="report-actions no-print">
+    <button type="button" class="button" onclick="window.print()">Print / Save as PDF</button>
+    <a class="button" href="{{ url_for('index') }}">Back to students</a>
+  </div>
+</div>
+{% endblock %}

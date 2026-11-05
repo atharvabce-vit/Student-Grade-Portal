@@ -1,6 +1,7 @@
 from config import MAX_MARK, SUBJECTS
 from database import (
     delete_student_record,
+    existing_signatures,
     fetch_all_students,
     fetch_student,
     insert_student,
@@ -87,10 +88,23 @@ def import_students_from_file():
     if len(records) == 0:
         print("No valid student rows found in the file.")
     else:
+        seen = existing_signatures()
+        added = 0
+        skipped = []
+
         for name, marks in records:
+            signature = (name.strip().lower(), tuple(marks))
+            if signature in seen:
+                skipped.append(name)
+                continue
             reg_no = insert_student(name, marks)
+            seen.add(signature)
+            added += 1
             print(f"Added {name} -> {reg_no}")
-        print(f"\nImported {len(records)} students.")
+
+        print(f"\nImported {added} students.")
+        if len(skipped) > 0:
+            print(f"Skipped {len(skipped)} duplicate students: " + ", ".join(skipped))
 
     if len(errors) > 0:
         print("\nSkipped rows:")

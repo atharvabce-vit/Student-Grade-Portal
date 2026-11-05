@@ -13,24 +13,18 @@
 </div>
 
 <h3>Subject averages</h3>
-<table>
-  <thead>
-    <tr>
-      <th>Subject</th>
-      <th>Average marks</th>
-      <th>Out of</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for subject in subjects %}
-    <tr>
-      <td>{{ subject }}</td>
-      <td>{{ "%.2f"|format(stats.subject_averages[loop.index0]) }}</td>
-      <td>{{ max_mark }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+<div class="chart">
+  {% for subject in subjects %}
+  {% set average = stats.subject_averages[loop.index0] %}
+  <div class="bar-row">
+    <span class="bar-label">{{ subject }}</span>
+    <span class="bar-track">
+      <span class="bar-fill" style="width: {{ '%.1f'|format(average / max_mark * 100) }}%"></span>
+    </span>
+    <span class="bar-value">{{ "%.2f"|format(average) }} / {{ max_mark }}</span>
+  </div>
+  {% endfor %}
+</div>
 {% else %}
 <p>No records found.</p>
 {% endif %}

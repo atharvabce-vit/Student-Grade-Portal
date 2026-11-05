@@ -14,10 +14,11 @@ from flask import (
 )
 
 from auth import can, login
-from config import CSV_FILE, MAX_MARK, SUBJECTS
+from config import CSV_FILE, MAX_MARK, PAGE_SIZE, PASS_MARK, SUBJECTS
 from database import (
     create_table,
     delete_student_record,
+    existing_signatures,
     fetch_all_students,
     fetch_student,
     insert_student,
@@ -70,6 +71,23 @@ def read_marks(form):
     return marks, ""
 
 
+def add_imported_records(records):
+    seen = existing_signatures()
+    added = 0
+    duplicates = []
+
+    for name, marks in records:
+        signature = (name.strip().lower(), tuple(marks))
+        if signature in seen:
+            duplicates.append(name)
+            continue
+        insert_student(name, marks)
+        seen.add(signature)
+        added += 1
+
+    return added, duplicates
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login_page():
     if request.method == "POST":
@@ -105,13 +123,27 @@ def index():
     students = search_students(keyword) if keyword != "" else fetch_all_students()
     students = filter_students(sort_students(students, sort_by), result_filter)
 
+    total = len(students)
+    page_count = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
+
+    page = request.args.get("page", "1")
+    page = int(page) if page.isdigit() and int(page) > 0 else 1
+    if page > page_count:
+        page = page_count
+
+    start = (page - 1) * PAGE_SIZE
+    page_students = students[start:start + PAGE_SIZE]
+
     return render_template(
         "index.html",
-        students=build_rows(students),
+        students=build_rows(page_students),
         subjects=SUBJECTS,
         sort_by=sort_by,
         result_filter=result_filter,
         keyword=keyword,
+        total=total,
+        page=page,
+        page_count=page_count,
         can_delete=can(current_role(), "delete"),
         role=current_role(),
     )
@@ -211,6 +243,26 @@ def stats_page():
     )
 
 
+@app.route("/student/<reg_no>")
+def report_page(reg_no):
+    if current_role() is None:
+        return redirect(url_for("login_page"))
+
+    row = fetch_student(reg_no)
+    if row is None:
+        flash("Student not found.")
+        return redirect(url_for("index"))
+
+    return render_template(
+        "report.html",
+        student=build_rows([row])[0],
+        subjects=SUBJECTS,
+        max_mark=MAX_MARK,
+        pass_mark=PASS_MARK,
+        role=current_role(),
+    )
+
+
 @app.route("/import", methods=["GET", "POST"])
 def import_page():
     if current_role() is None:
@@ -244,9 +296,10 @@ def import_page():
         if len(records) == 0:
             flash("No valid student rows were found in the file.")
         else:
-            for name, marks in records:
-                insert_student(name, marks)
-            flash(f"Imported {len(records)} students from {upload.filename}.")
+            added, duplicates = add_imported_records(records)
+            flash(f"Imported {added} of {len(records)} students from {upload.filename}.")
+            if duplicates:
+                flash("Skipped " + str(len(duplicates)) + " duplicate students: " + ", ".join(duplicates[:5]))
 
         for error in errors[:10]:
             flash(error)
@@ -284,6 +337,12 @@ def export_page():
 
     export_to_csv()
     return send_file(os.path.abspath(CSV_FILE), as_attachment=True)
+
+
+@app.errorhandler(413)
+def upload_too_large(error):
+    flash("That file is too large. The maximum upload size is 10 MB.")
+    return redirect(url_for("import_page"))
 
 
 if __name__ == "__main__":
