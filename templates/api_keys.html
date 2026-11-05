@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>API Keys</h2>
+
+<p class="hint">API keys let external tools read (and optionally write) student data through the JSON API. The raw key is shown only once, right after it is created.</p>
+
+<form method="post" action="{{ url_for('create_api_key_page') }}" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <fieldset>
+    <legend>Create a key</legend>
+    <label>Name
+      <input type="text" name="name" required>
+    </label>
+    <label>Scopes
+      <span><input type="checkbox" name="scopes" value="read" checked> read</span>
+      <span><input type="checkbox" name="scopes" value="write"> write</span>
+    </label>
+    <label>Expires (optional)
+      <input type="date" name="expires_at">
+    </label>
+  </fieldset>
+  <button type="submit">Create key</button>
+</form>
+
+<h3>Existing keys</h3>
+{% if keys %}
+<table>
+  <thead>
+    <tr>
+      <th>Name</th>
+      <th>Scopes</th>
+      <th>Status</th>
+      <th>Expires</th>
+      <th>Created</th>
+      <th>Last used</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for key_id, name, scopes, is_active, expires_at, created_at, last_used_at in keys %}
+    <tr>
+      <td>{{ name }}</td>
+      <td>{{ scopes }}</td>
+      <td class="{{ 'pass' if is_active else 'fail' }}">{{ "active" if is_active else "revoked" }}</td>
+      <td>{{ expires_at if expires_at else "never" }}</td>
+      <td>{{ created_at }}</td>
+      <td>{{ last_used_at if last_used_at else "-" }}</td>
+      <td class="actions">
+        <form method="post" action="{{ url_for('delete_api_key_page', key_id=key_id) }}"
+              onsubmit="return confirm('Revoke this API key?');" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="danger">Revoke</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No API keys issued yet.</p>
+{% endif %}
+{% endblock %}

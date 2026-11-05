@@ -15,6 +15,9 @@
     <div class="stat"><span>Percentage</span><strong>{{ "%.2f"|format(student.percentage) }}%</strong></div>
     <div class="stat"><span>Grade</span><strong>{{ student.grade }}</strong></div>
     <div class="stat"><span>Result</span><strong>{{ student.result }}</strong></div>
+    {% if attendance_rate is not none %}
+    <div class="stat"><span>Attendance</span><strong>{{ "%.1f"|format(attendance_rate) }}%</strong></div>
+    {% endif %}
   </div>
 
   <h3>Subject marks</h3>
@@ -59,6 +62,15 @@
 
   <div class="report-actions no-print">
     <button type="button" class="button" onclick="window.print()">Print / Save as PDF</button>
+    {% if can(role, 'transcripts') %}
+    <a class="button" href="{{ url_for('transcript_page', reg_no=student.reg_no) }}">Transcript</a>
+    {% endif %}
+    {% if can(role, 'email') %}
+    <form method="post" action="{{ url_for('email_report_card_page', reg_no=student.reg_no) }}" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="button">Email report card</button>
+    </form>
+    {% endif %}
     <a class="button" href="{{ url_for('index') }}">Back to students</a>
   </div>
 

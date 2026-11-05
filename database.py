@@ -91,6 +91,47 @@ ATTENDANCE_TABLE = """
     )
 """
 
+TERM_MARKS_TABLE = """
+    CREATE TABLE IF NOT EXISTS term_marks (
+        reg_no  TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        term    TEXT NOT NULL,
+        exam    TEXT NOT NULL,
+        mark    INTEGER NOT NULL,
+        PRIMARY KEY (reg_no, subject, term, exam),
+        FOREIGN KEY (reg_no) REFERENCES students (reg_no) ON DELETE CASCADE
+    )
+"""
+
+LOGIN_ATTEMPTS_TABLE = """
+    CREATE TABLE IF NOT EXISTS login_attempts (
+        username     TEXT PRIMARY KEY,
+        failures     INTEGER NOT NULL DEFAULT 0,
+        locked_until REAL NOT NULL DEFAULT 0
+    )
+"""
+
+API_KEYS_TABLE = """
+    CREATE TABLE IF NOT EXISTS api_keys (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        name         TEXT NOT NULL,
+        key_hash     TEXT NOT NULL UNIQUE,
+        scopes       TEXT NOT NULL DEFAULT 'read',
+        is_active    INTEGER NOT NULL DEFAULT 1,
+        expires_at   TEXT,
+        created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+        last_used_at TEXT
+    )
+"""
+
+SCHEMA_MIGRATIONS_TABLE = """
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+        version    INTEGER PRIMARY KEY,
+        name       TEXT NOT NULL,
+        applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+"""
+
 
 def connect():
     connection = sqlite3.connect(DB_NAME)
@@ -158,10 +199,7 @@ def _migrate_student_columns(cursor):
     ])
 
 
-def create_table():
-    connection = connect()
-    cursor = connection.cursor()
-    _migrate_old_students(cursor)
+def _migration_baseline(cursor):
     cursor.execute(STUDENTS_TABLE)
     cursor.execute(MARKS_TABLE)
     cursor.execute(SUBJECTS_TABLE)
@@ -170,6 +208,60 @@ def create_table():
     cursor.execute(AUDIT_TABLE)
     cursor.execute(ATTENDANCE_TABLE)
     _migrate_student_columns(cursor)
+
+
+def _migration_term_marks(cursor):
+    cursor.execute(TERM_MARKS_TABLE)
+
+
+def _migration_auth_tables(cursor):
+    cursor.execute(LOGIN_ATTEMPTS_TABLE)
+    cursor.execute(API_KEYS_TABLE)
+
+
+def _migration_session_version(cursor):
+    _add_missing_columns(cursor, "users", [("session_version", "INTEGER NOT NULL DEFAULT 1")])
+
+
+def _migration_audit_metadata(cursor):
+    _add_missing_columns(cursor, "audit_log", [
+        ("ip", "TEXT NOT NULL DEFAULT ''"),
+        ("user_agent", "TEXT NOT NULL DEFAULT ''"),
+    ])
+
+
+# Ordered schema migrations. Each entry runs at most once and is recorded in
+# the schema_migrations table, so new databases and existing ones converge.
+MIGRATIONS = [
+    (1, "baseline schema", _migration_baseline),
+    (2, "term-wise marks", _migration_term_marks),
+    (3, "auth and api keys", _migration_auth_tables),
+    (4, "user session version", _migration_session_version),
+    (5, "audit request metadata", _migration_audit_metadata),
+]
+
+
+def _applied_versions(cursor):
+    cursor.execute("SELECT version FROM schema_migrations")
+    return {row[0] for row in cursor.fetchall()}
+
+
+def create_table():
+    connection = connect()
+    cursor = connection.cursor()
+    cursor.execute(SCHEMA_MIGRATIONS_TABLE)
+    _migrate_old_students(cursor)
+
+    applied = _applied_versions(cursor)
+    for version, name, apply in MIGRATIONS:
+        if version in applied:
+            continue
+        apply(cursor)
+        cursor.execute(
+            "INSERT INTO schema_migrations (version, name) VALUES (?, ?)",
+            (version, name),
+        )
+
     connection.commit()
     connection.close()
     seed_subjects()
@@ -445,6 +537,7 @@ def delete_student_record(reg_no):
     connection = connect()
     cursor = connection.cursor()
     cursor.execute("DELETE FROM marks WHERE reg_no = ?", (reg_no,))
+    cursor.execute("DELETE FROM term_marks WHERE reg_no = ?", (reg_no,))
     cursor.execute("DELETE FROM attendance WHERE reg_no = ?", (reg_no,))
     cursor.execute("DELETE FROM students WHERE reg_no = ?", (reg_no,))
     connection.commit()
@@ -460,12 +553,13 @@ def existing_signatures():
     return signatures
 
 
-def record_audit(username, action, target="", details=""):
+def record_audit(username, action, target="", details="", ip="", user_agent=""):
     connection = connect()
     cursor = connection.cursor()
     cursor.execute(
-        "INSERT INTO audit_log (username, action, target, details) VALUES (?, ?, ?, ?)",
-        (username, action, target, details),
+        "INSERT INTO audit_log (username, action, target, details, ip, user_agent) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (username, action, target, details, ip, user_agent[:255]),
     )
     connection.commit()
     connection.close()
@@ -489,6 +583,29 @@ def fetch_audit_log(limit=100, target=None):
     rows = cursor.fetchall()
     connection.close()
     return rows
+
+
+def fetch_audit_log_detailed(limit=50, offset=0):
+    """Audit rows including the client IP, newest first, for the audit page."""
+    connection = connect()
+    cursor = connection.cursor()
+    cursor.execute(
+        "SELECT created_at, username, action, target, details, ip FROM audit_log "
+        "ORDER BY id DESC LIMIT ? OFFSET ?",
+        (limit, offset),
+    )
+    rows = cursor.fetchall()
+    connection.close()
+    return rows
+
+
+def count_audit_log():
+    connection = connect()
+    cursor = connection.cursor()
+    cursor.execute("SELECT COUNT(*) FROM audit_log")
+    total = cursor.fetchone()[0]
+    connection.close()
+    return total
 
 
 def marks_for_subject(subject):
@@ -569,3 +686,162 @@ def attendance_summary():
     rows = cursor.fetchall()
     connection.close()
     return [(reg_no, name, present or 0, total or 0) for reg_no, name, present, total in rows]
+
+
+# --------------------------------------------------------------------------- #
+# term-wise marks
+# --------------------------------------------------------------------------- #
+def set_term_mark(reg_no, subject, term, exam, mark):
+    connection = connect()
+    cursor = connection.cursor()
+    cursor.execute(
+        "INSERT INTO term_marks (reg_no, subject, term, exam, mark) VALUES (?, ?, ?, ?, ?) "
+        "ON CONFLICT(reg_no, subject, term, exam) DO UPDATE SET mark = ?",
+        (reg_no, subject, term, exam, mark, mark),
+    )
+    connection.commit()
+    connection.close()
+
+
+def term_marks_grid(term, exam):
+    """Return {reg_no: {subject: mark}} for one term/exam sitting."""
+    connection = connect()
+    cursor = connection.cursor()
+    cursor.execute(
+        "SELECT t.reg_no, t.subject, t.mark FROM term_marks t "
+        "JOIN students s ON s.reg_no = t.reg_no "
+        "WHERE t.term = ? AND t.exam = ? AND s.is_deleted = 0",
+        (term, exam),
+    )
+    rows = cursor.fetchall()
+    connection.close()
+    grid = {}
+    for reg_no, subject, mark in rows:
+        grid.setdefault(reg_no, {})[subject] = mark
+    return grid
+
+
+def term_marks_for_student(reg_no):
+    """Return {term: {subject: {exam: mark}}} for one student."""
+    connection = connect()
+    cursor = connection.cursor()
+    cursor.execute(
+        "SELECT term, exam, subject, mark FROM term_marks WHERE reg_no = ?",
+        (reg_no,),
+    )
+    rows = cursor.fetchall()
+    connection.close()
+    data = {}
+    for term, exam, subject, mark in rows:
+        data.setdefault(term, {}).setdefault(subject, {})[exam] = mark
+    return data
+
+
+# --------------------------------------------------------------------------- #
+# login attempts (persistent lockout)
+# --------------------------------------------------------------------------- #
+def get_login_attempt(username):
+    connection = connect()
+    cursor = connection.cursor()
+    cursor.execute(
+        "SELECT failures, locked_until FROM login_attempts WHERE username = ?",
+        (username,),
+    )
+    row = cursor.fetchone()
+    connection.close()
+    return (row[0], row[1]) if row else (0, 0.0)
+
+
+def save_login_attempt(username, failures, locked_until):
+    connection = connect()
+    cursor = connection.cursor()
+    cursor.execute(
+        "INSERT INTO login_attempts (username, failures, locked_until) VALUES (?, ?, ?) "
+        "ON CONFLICT(username) DO UPDATE SET failures = ?, locked_until = ?",
+        (username, failures, locked_until, failures, locked_until),
+    )
+    connection.commit()
+    connection.close()
+
+
+def clear_login_attempt(username):
+    connection = connect()
+    cursor = connection.cursor()
+    cursor.execute("DELETE FROM login_attempts WHERE username = ?", (username,))
+    connection.commit()
+    connection.close()
+
+
+# --------------------------------------------------------------------------- #
+# api keys
+# --------------------------------------------------------------------------- #
+def create_api_key(name, key_hash, scopes, expires_at=None):
+    connection = connect()
+    cursor = connection.cursor()
+    cursor.execute(
+        "INSERT INTO api_keys (name, key_hash, scopes, expires_at) VALUES (?, ?, ?, ?)",
+        (name, key_hash, scopes, expires_at),
+    )
+    key_id = cursor.lastrowid
+    connection.commit()
+    connection.close()
+    return key_id
+
+
+def list_api_keys():
+    connection = connect()
+    cursor = connection.cursor()
+    cursor.execute(
+        "SELECT id, name, scopes, is_active, expires_at, created_at, last_used_at "
+        "FROM api_keys ORDER BY id DESC",
+    )
+    rows = cursor.fetchall()
+    connection.close()
+    return rows
+
+
+def find_api_key(key_hash):
+    connection = connect()
+    cursor = connection.cursor()
+    cursor.execute(
+        "SELECT id, name, scopes, is_active, expires_at FROM api_keys WHERE key_hash = ?",
+        (key_hash,),
+    )
+    row = cursor.fetchone()
+    connection.close()
+    if row is None:
+        return None
+    return {
+        "id": row[0],
+        "name": row[1],
+        "scopes": row[2],
+        "is_active": bool(row[3]),
+        "expires_at": row[4],
+    }
+
+
+def delete_api_key(key_id):
+    connection = connect()
+    cursor = connection.cursor()
+    cursor.execute("DELETE FROM api_keys WHERE id = ?", (key_id,))
+    connection.commit()
+    connection.close()
+
+
+def touch_api_key(key_id):
+    connection = connect()
+    cursor = connection.cursor()
+    cursor.execute("UPDATE api_keys SET last_used_at = datetime('now') WHERE id = ?", (key_id,))
+    connection.commit()
+    connection.close()
+
+
+def backup_to(path):
+    """Copy the current database to `path` using SQLite's online backup API."""
+    source = connect()
+    destination = sqlite3.connect(path)
+    with destination:
+        source.backup(destination)
+    destination.close()
+    source.close()
+    return path

@@ -1,0 +1,13 @@
+services:
+  web:
+    build: .
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    environment:
+      # Keep the SQLite database on the mounted volume so it survives rebuilds.
+      SGP_DB_NAME: /data/students.db
+      SGP_LOG_FILE: /data/app.log
+    volumes:
+      - ./data:/data

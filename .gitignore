@@ -3,6 +3,8 @@ __pycache__/
 *$py.class
 *.egg-info/
 .pytest_cache/
+.coverage
+htmlcov/
 
 .venv/
 venv/
@@ -17,6 +19,9 @@ ENV/
 
 student_records.csv
 *.csv
+
+# Local data written by docker-compose.
+data/
 
 .vscode/
 .idea/

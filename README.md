@@ -3,7 +3,8 @@
 [![CI](https://github.com/atharvabce-vit/Student-Grade-Portal/actions/workflows/ci.yml/badge.svg)](https://github.com/atharvabce-vit/Student-Grade-Portal/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![Flask](https://img.shields.io/badge/Flask-3.1.3-black)](https://flask.palletsprojects.com/)
-[![Tests](https://img.shields.io/badge/tests-27%20passing-brightgreen)](#tests)
+[![Tests](https://img.shields.io/badge/tests-40%20passing-brightgreen)](#tests)
+[![Ruff](https://img.shields.io/badge/lint-ruff-261230)](#tests)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 A CRUD application to manage student academic records, built with Python and SQLite.
@@ -22,14 +23,19 @@ It can be used two ways, from the same codebase and the same database:
   and filter by class, section and term
 - Update a student's marks or details
 - Quick marks entry: pick a subject and fill in the marks for the whole class at once
-- Attendance: mark present / absent / late per day and see a running summary per student
+- Term-wise marks: enter marks per term and exam (Mid-Term / Final) in a class grid, then
+  build a per-student transcript with a per-term breakdown and an overall grade
+- Attendance: mark present / absent / late per day and see a running summary per student,
+  with a one-click "mark all present" for the whole class
 - Delete a student record. Deletes are soft by default, so records move to the Archive
   and can be restored or purged (admin only)
 - Manage subjects and their weights, so the subject list and percentage calculation are
   not fixed in code (admin only)
 - Automatic total, percentage, letter grade and PASS / FAIL per student (weights aware)
-- Per-student report card page with the profile, attendance and change history, plus a
-  clean printable layout (Print / Save as PDF)
+- Per-student report card page with the profile, attendance rate, change history and a
+  clean printable layout (Print / Save as PDF), plus a transcript page and PDF download
+- Email a report card to the guardian straight from the report card (optional, only when
+  SMTP is configured)
 - Class statistics: average, topper, lowest scorer, pass percentage, subject averages
 - Subject averages and a grade distribution shown as charts
 - Sort by registration number, name, percentage or total, and filter by pass / fail
@@ -41,7 +47,11 @@ It can be used two ways, from the same codebase and the same database:
   database, with a temporary lockout after repeated failures.
 - User management (create accounts, change roles, reset passwords, enable/disable) and
   an audit log of actions (both admin only)
-- A token protected JSON API and a light / dark theme for the web app
+- A token protected JSON API with revocable, scoped API keys (read / write), rate limiting
+  and a live OpenAPI description
+- Security hardening: hashed passwords, per-user session invalidation on password change,
+  a database-backed login lockout, per-IP rate limiting and CSP / anti-clickjacking headers
+- A light / dark theme for the web app
 
 ## Screenshots
 
@@ -74,21 +84,27 @@ Student-Grade-Portal-Project/
 ├── grading.py       # Total, percentage (weights aware), result and letter grade
 ├── reports.py       # Class statistics, sorting, filtering
 ├── auth.py          # Login, login lockout and permission checks
+├── security.py      # Security headers, client IP helper and rate limiter
 ├── users.py         # User accounts: hashing, lookup and management
+├── transcripts.py   # Builds term-wise transcripts from term marks
+├── mailer.py        # Optional SMTP email for report cards
 ├── logging_setup.py # Console + rotating file logging
 ├── students.py      # Command line menu actions
 ├── importer.py      # Reads CSV, Excel, PDF, Word and text files
 ├── export.py        # CSV and Excel export
-├── pdf_reports.py   # Batch PDF report cards
+├── pdf_reports.py   # Batch PDF report cards and the transcript PDF
 ├── templates/       # HTML pages for the web app
 ├── static/          # CSS and JS for the web app
 ├── tests/           # Unit tests (unittest)
 ├── docs/screenshots # Screenshots used in this README
 ├── Dockerfile       # Container image for deployment
+├── docker-compose.yml         # One-command local deployment
 ├── .dockerignore
 ├── .env.example     # Sample environment configuration
-├── .github/workflows/ci.yml   # GitHub Actions test workflow
+├── .github/workflows/ci.yml   # GitHub Actions lint and test workflow
+├── pyproject.toml   # Ruff and coverage configuration
 ├── requirements.txt
+├── requirements-dev.txt       # Test and lint tooling
 ├── .gitignore
 ├── LICENSE
 └── README.md
@@ -138,6 +154,24 @@ docker run -p 5000:5000 student-grade-portal
 
 Then open http://127.0.0.1:5000.
 
+Or with Docker Compose, which also keeps the database on a mounted volume:
+
+```
+docker compose up --build
+```
+
+## Backup
+
+The SQLite database can be copied safely (even while the app is running) with the online
+backup API:
+
+```
+python main.py backup students-backup.db
+```
+
+Pass a different path to write the copy somewhere else. The default is
+`students-backup.db` in the current directory.
+
 ## Configuration
 
 Settings live in `config.py` and every value can be overridden with an environment
@@ -152,8 +186,8 @@ initialised (on first run, or on first login with the command line version):
 
 | Username | Password   | Role    | Can do |
 |----------|------------|---------|--------|
-| admin    | admin123   | admin   | everything, including archive, subjects, users and audit |
-| faculty  | faculty123 | faculty | add, view, search, update, marks, attendance, import, stats, report, export (no archive, subjects, users or audit) |
+| admin    | admin123   | admin   | everything, including archive, subjects, users, audit and API keys |
+| faculty  | faculty123 | faculty | add, view, search, update, marks, term marks, transcripts, attendance, import, stats, report, export, email (no archive, subjects, users, audit or API keys) |
 
 Passwords are never stored in plain text: `users.py` stores a PBKDF2 hash of each
 password and `auth.py` verifies whatever is typed at login. After several failed
@@ -163,14 +197,23 @@ which is admin only. Change the demo passwords after the first login.
 
 ## Tests
 
-The `tests/` folder holds a unit test suite (grading, reports, importer and the
-database) built with the standard library `unittest`. Run it with:
+The `tests/` folder holds a unit test suite (grading, reports, importer, the database and
+the web features) built with the standard library `unittest`. Install the dev tooling and
+run it with:
 
 ```
+pip install -r requirements-dev.txt
 python -m unittest discover -v
 ```
 
-The same command runs in CI on every push and pull request via
+Lint and coverage:
+
+```
+ruff check .
+coverage run -m unittest discover && coverage report -m
+```
+
+The same checks run in CI on every push and pull request via
 `.github/workflows/ci.yml`.
 
 ## Grading
@@ -274,8 +317,12 @@ Working with Google Docs and Google Sheets:
 - Marks entry (admins and faculty): pick a subject, fill in a mark for each student and
   save the whole column in one go. Empty boxes are left unchanged.
 - Attendance (admins and faculty): pick a date, set each student to present / absent /
-  late and save. The page also shows a running present rate per student, and each
-  student's recent attendance appears on their report card.
+  late and save. "Mark all present" fills in everyone in one click, and the page also
+  shows a running present rate per student, which appears on the report card too.
+- Term-wise marks and transcripts (admins and faculty): pick a term (Term 1 / Term 2 /
+  Term 3) and an exam (Mid-Term / Final), then fill in a subject-by-student grid. Each
+  student's Transcript page (linked from their report card) shows every term as a table,
+  with marks earned, percentage and grade, a cumulative overall grade, and a PDF download.
 - Archive (admins): deleting a student moves them to the Archive instead of removing
   the row, so a record can be restored or purged permanently.
 
@@ -289,8 +336,15 @@ From the web app you can download:
 
 ## JSON API
 
-A small read/write API is available for other programs. Send the token from
-`SGP_API_TOKEN` (default `dev-api-token`) in the `X-API-Token` header.
+A small read/write API is available for other programs. Send a token in the
+`X-API-Token` header. Two kinds of token are accepted:
+
+- the static token from `SGP_API_TOKEN` (default `dev-api-token`) for scripts you control
+- a database-issued API key created on the API Keys page (admin only)
+
+API keys are stored as SHA-256 hashes, carry a scope (`read` and/or `write`), and can be
+given an expiry date and revoked at any time. Write requests made with a read-only key
+are rejected with `403`. Requests are rate limited per client IP.
 
 | Method | Path | What it does |
 |--------|------|--------------|
@@ -309,6 +363,20 @@ the token in production.
   visible on the Audit page (admin only) and per student on the report card.
 - The Users page (admin only) lets an admin create accounts, change roles, reset
   passwords, and enable or disable accounts.
+- The API Keys page (admin only) issues and revokes scoped API keys for the JSON API.
+
+## Security
+
+- Passwords are stored as PBKDF2 hashes; the login form locks an account temporarily after
+  repeated failures, and the lockout state lives in the database so it survives restarts
+  and is shared across workers.
+- Changing a password bumps a per-user session version, so any other logged-in sessions
+  for that account are invalidated immediately.
+- Logins and the JSON API are rate limited per client IP.
+- Every response carries `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`
+  and a Content-Security-Policy.
+- Running with `SGP_ENV=production` refuses to start while the shipped placeholder
+  `SGP_SECRET_KEY` / `SGP_API_TOKEN` are still set, or while secure cookies are off.
 
 ## Database Schema
 
@@ -352,12 +420,33 @@ attendance and the registration counter.
 | is_active | INTEGER | 0 disables the account |
 | created_at | TEXT | When the account was created |
 
-`audit_log`, `attendance` and `settings` hold the action history, per-day attendance and
-the last generated registration number respectively.
+`audit_log` and `attendance` hold the action history (with the client IP) and per-day
+attendance, and `settings` keeps the last generated registration number.
+
+`term_marks` stores the term-wise marks grid:
+
+| Column  | Type    | Notes |
+|---------|---------|-------|
+| reg_no  | TEXT    | Foreign key to `students` (deleted with the student) |
+| subject | TEXT    | Subject name |
+| term    | TEXT    | Term 1 / Term 2 / Term 3 |
+| exam    | TEXT    | Mid-Term / Final |
+| mark    | INTEGER | Out of 50 |
+
+`api_keys` and `login_attempts` support the JSON API and the login lockout:
+
+| Column | Type | Notes |
+|--------|------|-------|
+| name, key_hash, scopes, is_active, expires_at, created_at, last_used_at | - | `api_keys`: `key_hash` is a SHA-256 hash, `scopes` is `read` and/or `write` |
+| username, failures, locked_until | - | `login_attempts`: surviving, shared lockout state per username |
+
+`schema_migrations` records which versioned migrations have run, so the schema upgrades
+itself once and stays consistent for both fresh and existing databases.
 
 The old single-table layout (with a `maths`, `physics`, ... column each) is upgraded
 automatically on first run: `database.py` detects it and moves the data into the two
-tables above. Extra profile columns are added to an existing `students` table in place.
+tables above. Extra profile columns and tables are added in place afterwards by the
+migration runner.
 
 ## Notes
 

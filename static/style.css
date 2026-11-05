@@ -672,6 +672,17 @@ select:focus {
   box-shadow: 0 8px 22px rgba(244, 63, 94, 0.4);
 }
 
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.pagination .button {
+  text-decoration: none;
+}
+
 /* Light theme: the toggle stores the choice and swaps these variables. */
 [data-theme="light"] {
   --bg: #f2f6fb;

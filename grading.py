@@ -12,7 +12,7 @@ def calculate_percentage(marks, weights=None):
         maximum = sum(MAX_MARK * weight for weight in weights)
         if maximum == 0:
             return 0.0
-        earned = sum(mark * weight for mark, weight in zip(marks, weights))
+        earned = sum(mark * weight for mark, weight in zip(marks, weights, strict=False))
         return earned / maximum * 100
     maximum = len(marks) * MAX_MARK
     return calculate_total(marks) / maximum * 100

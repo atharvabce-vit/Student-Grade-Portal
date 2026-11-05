@@ -25,6 +25,7 @@
     <a href="{{ url_for('index') }}">Students</a>
     <a href="{{ url_for('add_student_page') }}">Add Student</a>
     {% if can(role, 'marks') %}<a href="{{ url_for('marks_page') }}">Marks</a>{% endif %}
+    {% if can(role, 'marks') %}<a href="{{ url_for('term_marks_page') }}">Term Marks</a>{% endif %}
     {% if can(role, 'attendance') %}<a href="{{ url_for('attendance_page') }}">Attendance</a>{% endif %}
     {% if can(role, 'import') %}<a href="{{ url_for('import_page') }}">Import</a>{% endif %}
     <a href="{{ url_for('stats_page') }}">Statistics</a>
@@ -34,6 +35,7 @@
     {% if can(role, 'audit') %}<a href="{{ url_for('audit_page') }}">Audit</a>{% endif %}
     {% if can(role, 'users') %}<a href="{{ url_for('users_page') }}">Users</a>{% endif %}
     <a href="{{ url_for('api_docs_page') }}">API</a>
+    {% if can(role, 'apikeys') %}<a href="{{ url_for('api_keys_page') }}">API Keys</a>{% endif %}
     <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle light and dark theme">Theme</button>
     <span class="role">{{ role }}</span>
     <a href="{{ url_for('logout') }}">Logout</a>

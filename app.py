@@ -1,6 +1,8 @@
 import datetime
+import hmac
 import logging
 import os
+import secrets
 import tempfile
 from datetime import timedelta
 
@@ -20,33 +22,44 @@ from flask_wtf import CSRFProtect
 
 from auth import can, lockout_remaining, login
 from config import (
+    API_RATE_LIMIT,
     API_TOKEN,
     ATTENDANCE_STATUSES,
     CSV_FILE,
     DEBUG,
     ENV,
+    EXAMS,
+    LOGIN_RATE_LIMIT,
     MAX_MARK,
     PAGE_SIZE,
     PASS_MARK,
     SECRET_KEY,
     SESSION_COOKIE_SECURE,
     SESSION_LIFETIME_MINUTES,
+    TERMS,
+    validate_config,
 )
 from database import (
     add_subject,
     attendance_for_student,
     attendance_summary,
+    count_audit_log,
+    create_api_key,
     create_table,
+    delete_api_key,
     delete_student_record,
     existing_signatures,
     fetch_all_students,
     fetch_attendance,
     fetch_audit_log,
+    fetch_audit_log_detailed,
     fetch_deleted_students,
     fetch_details_map,
     fetch_student,
     fetch_student_details,
+    find_api_key,
     insert_student,
+    list_api_keys,
     mark_attendance,
     marks_for_subject,
     record_audit,
@@ -55,23 +68,32 @@ from database import (
     search_students,
     set_subject_mark,
     set_subject_weight,
+    set_term_mark,
     soft_delete_student,
     subject_names,
     subject_weights,
+    term_marks_for_student,
+    term_marks_grid,
+    touch_api_key,
     update_student_details,
     update_student_record,
 )
-from export import build_csv_bytes, build_excel_bytes, export_to_csv
+from export import build_excel_bytes, export_to_csv
 from grading import calculate, get_grade
 from importer import import_students
 from logging_setup import configure_logging
-from pdf_reports import build_report_cards_bytes
+from mailer import MailNotConfigured, send_report_card
+from pdf_reports import build_report_cards_bytes, build_transcript_pdf
 from reports import class_statistics, filter_students, sort_students
+from security import RateLimiter, apply_security_headers, client_ip
+from transcripts import build_transcript, cumulative
 from users import (
     create_user,
     delete_user,
+    hash_token,
     list_users,
     seed_default_users,
+    session_version,
     set_active,
     set_password,
     set_role,
@@ -92,10 +114,25 @@ app.config.update(
 
 csrf = CSRFProtect(app)
 
+validate_config()
+apply_security_headers(app)
+
+login_limiter = RateLimiter(LOGIN_RATE_LIMIT)
+api_limiter = RateLimiter(API_RATE_LIMIT)
+
 app.jinja_env.globals["can"] = can
 
 create_table()
 seed_default_users()
+
+
+@app.before_request
+def _validate_session():
+    """Log the user out if their account changed or the session expired."""
+    username = session.get("username")
+    if username and session.get("sv") != session_version(username):
+        session.clear()
+    return None
 
 
 # --------------------------------------------------------------------------- #
@@ -109,6 +146,18 @@ def current_username():
     return session.get("username", "")
 
 
+def audit(action, target="", details="", username=None):
+    """Record an audit entry with the client's request metadata."""
+    record_audit(
+        username if username is not None else current_username(),
+        action,
+        target,
+        details,
+        ip=client_ip(request),
+        user_agent=request.headers.get("User-Agent", ""),
+    )
+
+
 def subject_context():
     return {
         "subjects": subject_names(),
@@ -116,6 +165,8 @@ def subject_context():
         "max_mark": MAX_MARK,
         "pass_mark": PASS_MARK,
         "statuses": ATTENDANCE_STATUSES,
+        "term_options": TERMS,
+        "exam_options": EXAMS,
     }
 
 
@@ -196,12 +247,45 @@ def _guard(action=None):
     return None
 
 
-def require_api_token():
-    """Return None when the request carries the right token, else a response."""
+def pagination(total, size=PAGE_SIZE):
+    """Return (page, page_count, offset) clamped to the available range."""
+    page_count = max(1, (total + size - 1) // size)
+    raw = request.args.get("page", "1")
+    page = int(raw) if raw.isdigit() and int(raw) > 0 else 1
+    if page > page_count:
+        page = page_count
+    return page, page_count, (page - 1) * size
+
+
+def require_api_token(required_scope=None):
+    """Return None when the request carries a valid token, else a response.
+
+    Accepts either the configured static token or a database-issued API key.
+    """
     token = request.headers.get("X-API-Token", "")
-    if token and token == API_TOKEN:
+    if not token:
+        return jsonify({"error": "unauthorized", "detail": "Send a valid X-API-Token header."}), 401
+
+    if hmac.compare_digest(token, API_TOKEN):
         return None
-    return jsonify({"error": "unauthorized", "detail": "Send a valid X-API-Token header."}), 401
+
+    key = find_api_key(hash_token(token))
+    if key is None or not key["is_active"]:
+        return jsonify({"error": "unauthorized", "detail": "Send a valid X-API-Token header."}), 401
+
+    if key["expires_at"]:
+        try:
+            expiry = datetime.datetime.fromisoformat(key["expires_at"])
+        except ValueError:
+            expiry = None
+        if expiry and expiry < datetime.datetime.now():
+            return jsonify({"error": "unauthorized", "detail": "API key has expired."}), 401
+
+    if required_scope and required_scope not in key["scopes"].split(","):
+        return jsonify({"error": "forbidden", "detail": "API key lacks the required scope."}), 403
+
+    touch_api_key(key["id"])
+    return None
 
 
 # --------------------------------------------------------------------------- #
@@ -210,6 +294,10 @@ def require_api_token():
 @app.route("/login", methods=["GET", "POST"])
 def login_page():
     if request.method == "POST":
+        if not login_limiter.allow(client_ip(request)):
+            flash("Too many login attempts from your address. Please wait a moment.")
+            return render_template("login.html", role=current_role()), 429
+
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
 
@@ -221,13 +309,14 @@ def login_page():
 
             if role is None:
                 flash("Invalid username or password.")
-                record_audit(username, "login_failed")
+                audit("login_failed", username=username)
             else:
                 session.clear()
                 session["username"] = username
                 session["role"] = role
+                session["sv"] = session_version(username)
                 session.permanent = True
-                record_audit(username, "login")
+                audit("login", username=username)
                 return redirect(url_for("index"))
 
     return render_template("login.html", role=current_role())
@@ -238,7 +327,7 @@ def logout():
     username = current_username()
     session.clear()
     if username:
-        record_audit(username, "logout")
+        audit("logout", username=username)
     return redirect(url_for("login_page"))
 
 
@@ -321,7 +410,7 @@ def add_student_page():
             flash(error)
         else:
             reg_no = insert_student(name, marks, read_details(request.form))
-            record_audit(current_username(), "add_student", reg_no, name)
+            audit("add_student", reg_no, name)
             flash(f"Student {name} added with registration number {reg_no}.")
             return redirect(url_for("index"))
 
@@ -352,7 +441,7 @@ def edit_student_page(reg_no):
         else:
             update_student_record(reg_no, name, marks)
             update_student_details(reg_no, read_details(request.form))
-            record_audit(current_username(), "update_student", reg_no, name)
+            audit("update_student", reg_no, name)
             flash("Record updated successfully.")
             return redirect(url_for("index"))
 
@@ -372,7 +461,7 @@ def delete_student_page(reg_no):
         return guard
 
     soft_delete_student(reg_no)
-    record_audit(current_username(), "delete_student", reg_no)
+    audit("delete_student", reg_no)
     flash("Record moved to the archive. Restore it from the Archive page.")
     return redirect(url_for("index"))
 
@@ -383,9 +472,13 @@ def archive_page():
     if guard:
         return guard
 
+    deleted = fetch_deleted_students()
+    page, page_count, offset = pagination(len(deleted))
     return render_template(
         "archive.html",
-        students=build_rows(fetch_deleted_students()),
+        students=build_rows(deleted[offset:offset + PAGE_SIZE]),
+        page=page,
+        page_count=page_count,
         role=current_role(),
         **subject_context(),
     )
@@ -398,7 +491,7 @@ def restore_student_page(reg_no):
         return guard
 
     restore_student(reg_no)
-    record_audit(current_username(), "restore_student", reg_no)
+    audit("restore_student", reg_no)
     flash("Record restored.")
     return redirect(url_for("archive_page"))
 
@@ -410,7 +503,7 @@ def purge_student_page(reg_no):
         return guard
 
     delete_student_record(reg_no)
-    record_audit(current_username(), "purge_student", reg_no)
+    audit("purge_student", reg_no)
     flash("Record permanently deleted.")
     return redirect(url_for("archive_page"))
 
@@ -458,12 +551,17 @@ def report_page(reg_no):
         flash("Student not found.")
         return redirect(url_for("index"))
 
+    attendance = attendance_for_student(reg_no)
+    present = sum(1 for _day, status in attendance if status == "present")
+    attendance_rate = round(present / len(attendance) * 100, 1) if attendance else None
+
     return render_template(
         "report.html",
         student=build_rows([row])[0],
         details=fetch_student_details(reg_no) or {},
         history=fetch_audit_log(50, target=reg_no),
-        attendance=attendance_for_student(reg_no),
+        attendance=attendance,
+        attendance_rate=attendance_rate,
         role=current_role(),
         **subject_context(),
     )
@@ -495,7 +593,7 @@ def marks_page():
                 continue
             set_subject_mark(reg_no, subject, int(value))
             saved += 1
-        record_audit(current_username(), "marks_entry", subject, f"{saved} saved")
+        audit("marks_entry", subject, f"{saved} saved")
         flash(f"Saved {saved} mark(s) for {subject}.")
         return redirect(url_for("marks_page", subject=subject))
 
@@ -512,6 +610,116 @@ def marks_page():
 
 
 # --------------------------------------------------------------------------- #
+# term-wise marks and transcripts
+# --------------------------------------------------------------------------- #
+@app.route("/term-marks", methods=["GET", "POST"])
+def term_marks_page():
+    guard = _guard("marks")
+    if guard:
+        return guard
+
+    subjects = subject_names()
+    term = request.form.get("term") or request.args.get("term") or (TERMS[0] if TERMS else "")
+    exam = request.form.get("exam") or request.args.get("exam") or (EXAMS[0] if EXAMS else "")
+    if term not in TERMS:
+        term = TERMS[0] if TERMS else ""
+    if exam not in EXAMS:
+        exam = EXAMS[0] if EXAMS else ""
+
+    if request.method == "POST":
+        saved = 0
+        for student in fetch_all_students():
+            reg_no = student[0]
+            for index, subject in enumerate(subjects):
+                value = request.form.get(f"mark_{reg_no}_{index}", "").strip()
+                if value == "":
+                    continue
+                if not value.isdigit() or not (0 <= int(value) <= MAX_MARK):
+                    flash(f"Invalid mark for {reg_no} / {subject}; it was skipped.")
+                    continue
+                set_term_mark(reg_no, subject, term, exam, int(value))
+                saved += 1
+        audit("term_marks_entry", f"{term} / {exam}", f"{saved} saved")
+        flash(f"Saved {saved} term mark(s) for {term} - {exam}.")
+        return redirect(url_for("term_marks_page", term=term, exam=exam))
+
+    grid = term_marks_grid(term, exam)
+    students = []
+    for row in fetch_all_students():
+        stored = grid.get(row[0], {})
+        students.append({
+            "reg_no": row[0],
+            "name": row[1],
+            "marks": [stored.get(subject, "") for subject in subjects],
+        })
+
+    return render_template(
+        "term_marks.html",
+        term=term,
+        exam=exam,
+        students=students,
+        role=current_role(),
+        **subject_context(),
+    )
+
+
+def _transcript_parts(reg_no):
+    terms = build_transcript(term_marks_for_student(reg_no), subject_names(), EXAMS)
+    return terms, cumulative(terms)
+
+
+@app.route("/student/<reg_no>/transcript")
+def transcript_page(reg_no):
+    guard = _guard("transcripts")
+    if guard:
+        return guard
+
+    row = fetch_student(reg_no)
+    if row is None:
+        flash("Student not found.")
+        return redirect(url_for("index"))
+
+    terms, overall = _transcript_parts(reg_no)
+    return render_template(
+        "transcript.html",
+        student={"reg_no": row[0], "name": row[1]},
+        details=fetch_student_details(reg_no) or {},
+        terms=terms,
+        overall=overall,
+        exams=EXAMS,
+        role=current_role(),
+        **subject_context(),
+    )
+
+
+@app.route("/student/<reg_no>/transcript.pdf")
+def transcript_pdf_page(reg_no):
+    guard = _guard("transcripts")
+    if guard:
+        return guard
+
+    row = fetch_student(reg_no)
+    if row is None:
+        flash("Student not found.")
+        return redirect(url_for("index"))
+
+    terms, overall = _transcript_parts(reg_no)
+    payload = build_transcript_pdf(
+        {"reg_no": row[0], "name": row[1]},
+        fetch_student_details(reg_no) or {},
+        terms,
+        overall,
+        EXAMS,
+        MAX_MARK,
+    )
+    return Response(
+        payload,
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=transcript-{reg_no}.pdf"},
+    )
+
+
+# --------------------------------------------------------------------------- #
 # attendance
 # --------------------------------------------------------------------------- #
 @app.route("/attendance", methods=["GET", "POST"])
@@ -523,14 +731,15 @@ def attendance_page():
     day = request.form.get("day") or request.args.get("day") or datetime.date.today().isoformat()
 
     if request.method == "POST":
+        default_status = request.form.get("default_status", "").strip()
         saved = 0
         for student in fetch_all_students():
             reg_no = student[0]
-            status = request.form.get("status_" + reg_no, "")
+            status = request.form.get("status_" + reg_no, "").strip() or default_status
             if status in ATTENDANCE_STATUSES:
                 mark_attendance(reg_no, day, status)
                 saved += 1
-        record_audit(current_username(), "attendance", day, f"{saved} marked")
+        audit("attendance", day, f"{saved} marked")
         flash(f"Attendance saved for {day}.")
         return redirect(url_for("attendance_page", day=day))
 
@@ -578,7 +787,7 @@ def add_subject_page():
     if name == "":
         flash("Subject name is required.")
     elif add_subject(name):
-        record_audit(current_username(), "add_subject", name)
+        audit("add_subject", name)
         flash(f"Subject {name} added.")
     else:
         flash(f"Subject {name} already exists.")
@@ -593,7 +802,7 @@ def remove_subject_page():
 
     name = request.form.get("name", "").strip()
     remove_subject(name)
-    record_audit(current_username(), "remove_subject", name)
+    audit("remove_subject", name)
     flash(f"Subject {name} removed.")
     return redirect(url_for("subjects_page"))
 
@@ -614,7 +823,7 @@ def subject_weight_page():
         flash("Weight must be a positive number.")
     else:
         set_subject_weight(name, weight)
-        record_audit(current_username(), "set_subject_weight", name, str(weight))
+        audit("set_subject_weight", name, str(weight))
         flash(f"Weight for {name} set to {weight}.")
     return redirect(url_for("subjects_page"))
 
@@ -741,7 +950,16 @@ def audit_page():
     if guard:
         return guard
 
-    return render_template("audit.html", entries=fetch_audit_log(200), role=current_role())
+    total = count_audit_log()
+    page, page_count, offset = pagination(total)
+    return render_template(
+        "audit.html",
+        entries=fetch_audit_log_detailed(PAGE_SIZE, offset),
+        page=page,
+        page_count=page_count,
+        total=total,
+        role=current_role(),
+    )
 
 
 @app.route("/users")
@@ -770,7 +988,7 @@ def add_user_page():
     else:
         try:
             create_user(username, password, role)
-            record_audit(current_username(), "create_user", username, role)
+            audit("create_user", username, role)
             flash(f"User {username} created.")
         except Exception:
             flash(f"User {username} already exists.")
@@ -787,7 +1005,7 @@ def change_user_role(username):
     role = request.form.get("role", "").strip()
     if role in ("admin", "faculty"):
         set_role(username, role)
-        record_audit(current_username(), "set_role", username, role)
+        audit("set_role", username, role)
         flash(f"{username} is now {role}.")
     return redirect(url_for("users_page"))
 
@@ -803,7 +1021,7 @@ def change_user_password(username):
         flash("Password cannot be empty.")
     else:
         set_password(username, password)
-        record_audit(current_username(), "set_password", username)
+        audit("set_password", username)
         flash(f"Password updated for {username}.")
     return redirect(url_for("users_page"))
 
@@ -816,7 +1034,7 @@ def toggle_user(username):
 
     active = request.form.get("active") == "1"
     set_active(username, active)
-    record_audit(current_username(), "set_active", username, str(active))
+    audit("set_active", username, str(active))
     flash(f"{username} {'enabled' if active else 'disabled'}.")
     return redirect(url_for("users_page"))
 
@@ -831,9 +1049,95 @@ def remove_user(username):
         flash("You cannot delete the account you are signed in with.")
     else:
         delete_user(username)
-        record_audit(current_username(), "delete_user", username)
+        audit("delete_user", username)
         flash(f"User {username} deleted.")
     return redirect(url_for("users_page"))
+
+
+# --------------------------------------------------------------------------- #
+# api keys
+# --------------------------------------------------------------------------- #
+@app.route("/api-keys")
+def api_keys_page():
+    guard = _guard("apikeys")
+    if guard:
+        return guard
+
+    return render_template("api_keys.html", keys=list_api_keys(), role=current_role())
+
+
+@app.route("/api-keys/create", methods=["POST"])
+def create_api_key_page():
+    guard = _guard("apikeys")
+    if guard:
+        return guard
+
+    name = request.form.get("name", "").strip()
+    scopes = ",".join(s for s in request.form.getlist("scopes") if s in ("read", "write")) or "read"
+    expires_at = request.form.get("expires_at", "").strip() or None
+
+    if name == "":
+        flash("A key name is required.")
+        return redirect(url_for("api_keys_page"))
+
+    raw = "sgp_" + secrets.token_urlsafe(24)
+    create_api_key(name, hash_token(raw), scopes, expires_at)
+    audit("create_api_key", name, scopes)
+    flash(f"Key created ({scopes}). Copy it now, it is not shown again: {raw}")
+    return redirect(url_for("api_keys_page"))
+
+
+@app.route("/api-keys/<int:key_id>/delete", methods=["POST"])
+def delete_api_key_page(key_id):
+    guard = _guard("apikeys")
+    if guard:
+        return guard
+
+    delete_api_key(key_id)
+    audit("delete_api_key", str(key_id))
+    flash("API key revoked.")
+    return redirect(url_for("api_keys_page"))
+
+
+# --------------------------------------------------------------------------- #
+# email report card
+# --------------------------------------------------------------------------- #
+@app.route("/student/<reg_no>/email", methods=["POST"])
+def email_report_card_page(reg_no):
+    guard = _guard("email")
+    if guard:
+        return guard
+
+    row = fetch_student(reg_no)
+    if row is None:
+        flash("Student not found.")
+        return redirect(url_for("index"))
+
+    details = fetch_student_details(reg_no) or {}
+    recipient = details.get("email", "")
+    if not recipient:
+        flash("This student has no email address on file.")
+        return redirect(url_for("report_page", reg_no=reg_no))
+
+    student = build_rows([row])[0]
+    html = (
+        f"<h2>Report Card</h2><p><b>{student['name']}</b> ({student['reg_no']})</p>"
+        f"<p>Total: {student['total']} &nbsp; Percentage: {student['percentage']:.2f}% &nbsp; "
+        f"Grade: {student['grade']} &nbsp; Result: {student['result']}</p>"
+    )
+    try:
+        send_report_card(recipient, row[1], f"Report card for {row[1]}", html)
+    except MailNotConfigured as error:
+        flash(str(error))
+        return redirect(url_for("report_page", reg_no=reg_no))
+    except Exception as error:  # noqa: BLE001 - surface SMTP failures to the user
+        logger.exception("Failed to email report card for %s", reg_no)
+        flash(f"Could not send the email: {error}")
+        return redirect(url_for("report_page", reg_no=reg_no))
+
+    audit("email_report_card", reg_no, recipient)
+    flash(f"Report card emailed to {recipient}.")
+    return redirect(url_for("report_page", reg_no=reg_no))
 
 
 # --------------------------------------------------------------------------- #
@@ -886,7 +1190,10 @@ def api_docs_page():
 @app.route("/api/students", methods=["GET", "POST"])
 @csrf.exempt
 def api_students():
-    error = require_api_token()
+    if not api_limiter.allow(client_ip(request)):
+        return jsonify({"error": "rate_limited", "detail": "Too many requests."}), 429
+
+    error = require_api_token("read" if request.method == "GET" else "write")
     if error:
         return error
 
@@ -907,14 +1214,17 @@ def api_students():
         return jsonify({"error": "invalid_marks", "detail": f"Marks must be 0-{MAX_MARK}."}), 400
 
     reg_no = insert_student(name, marks)
-    record_audit("api", "api_add_student", reg_no, name)
+    audit("api_add_student", reg_no, name, username="api")
     return jsonify({"reg_no": reg_no, "name": name, "marks": marks}), 201
 
 
 @app.route("/api/students/<reg_no>", methods=["GET", "DELETE"])
 @csrf.exempt
 def api_student(reg_no):
-    error = require_api_token()
+    if not api_limiter.allow(client_ip(request)):
+        return jsonify({"error": "rate_limited", "detail": "Too many requests."}), 429
+
+    error = require_api_token("read" if request.method == "GET" else "write")
     if error:
         return error
 
@@ -924,7 +1234,7 @@ def api_student(reg_no):
 
     if request.method == "DELETE":
         delete_student_record(reg_no)
-        record_audit("api", "api_delete_student", reg_no)
+        audit("api_delete_student", reg_no, username="api")
         return jsonify({"deleted": reg_no})
 
     return jsonify({"student": build_rows([row])[0], "details": fetch_student_details(reg_no)})

@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Term-wise Marks</h2>
+
+<form method="get" class="filters">
+  <label>Term
+    <select name="term" onchange="this.form.submit()">
+      {% for name in term_options %}
+      <option value="{{ name }}" {% if name == term %}selected{% endif %}>{{ name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Exam
+    <select name="exam" onchange="this.form.submit()">
+      {% for name in exam_options %}
+      <option value="{{ name }}" {% if name == exam %}selected{% endif %}>{{ name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <noscript><button type="submit">Load</button></noscript>
+</form>
+
+{% if students and subjects %}
+<p class="hint">Enter a mark out of {{ max_mark }} for each subject. Leave a box empty to keep the stored mark.</p>
+
+<form method="post" action="{{ url_for('term_marks_page') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="term" value="{{ term }}">
+  <input type="hidden" name="exam" value="{{ exam }}">
+  <table>
+    <thead>
+      <tr>
+        <th>Reg No</th>
+        <th>Name</th>
+        {% for subject in subjects %}
+        <th>{{ subject }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for student in students %}
+      <tr>
+        <td>{{ student.reg_no }}</td>
+        <td>{{ student.name }}</td>
+        {% for subject in subjects %}
+        <td>
+          <input type="number" name="mark_{{ student.reg_no }}_{{ loop.index0 }}"
+                 min="0" max="{{ max_mark }}" value="{{ student.marks[loop.index0] }}">
+        </td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div class="report-actions">
+    <button type="submit" class="button">Save {{ term }} - {{ exam }}</button>
+  </div>
+</form>
+{% else %}
+<p>No records found.</p>
+{% endif %}
+{% endblock %}

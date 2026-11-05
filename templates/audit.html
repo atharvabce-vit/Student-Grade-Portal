@@ -12,20 +12,23 @@
       <th>Action</th>
       <th>Target</th>
       <th>Details</th>
+      <th>IP</th>
     </tr>
   </thead>
   <tbody>
-    {% for created_at, username, action, target, details in entries %}
+    {% for created_at, username, action, target, details, ip in entries %}
     <tr>
       <td>{{ created_at }}</td>
       <td>{{ username if username else "-" }}</td>
       <td>{{ action }}</td>
       <td>{{ target if target else "-" }}</td>
       <td>{{ details if details else "-" }}</td>
+      <td>{{ ip if ip else "-" }}</td>
     </tr>
     {% endfor %}
   </tbody>
 </table>
+{% include "_pagination.html" %}
 {% else %}
 <p>No audit entries recorded yet.</p>
 {% endif %}

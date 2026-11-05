@@ -1,0 +1,11 @@
+{% if page_count and page_count > 1 %}
+<nav class="pagination no-print" aria-label="Pagination">
+  {% if page > 1 %}
+  <a class="button" href="{{ url_for(request.endpoint, page=page - 1, **(request.view_args or {})) }}">Previous</a>
+  {% endif %}
+  <span class="hint">Page {{ page }} of {{ page_count }}</span>
+  {% if page < page_count %}
+  <a class="button" href="{{ url_for(request.endpoint, page=page + 1, **(request.view_args or {})) }}">Next</a>
+  {% endif %}
+</nav>
+{% endif %}

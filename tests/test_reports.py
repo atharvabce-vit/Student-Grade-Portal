@@ -2,7 +2,6 @@ import unittest
 
 from reports import class_statistics, filter_students, sort_students
 
-
 ROWS = [
     ("SGP1001", "Riya", 42, 38, 45, 40, 47),
     ("SGP1003", "Arjun", 35, 29, 31, 44, 38),

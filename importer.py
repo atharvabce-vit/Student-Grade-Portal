@@ -151,8 +151,8 @@ def read_text_rows(path):
 def read_sheet_rows(path):
     try:
         from openpyxl import load_workbook
-    except ImportError:
-        raise ValueError("openpyxl is not installed. Run: pip install openpyxl")
+    except ImportError as error:
+        raise ValueError("openpyxl is not installed. Run: pip install openpyxl") from error
 
     workbook = load_workbook(path, read_only=True, data_only=True)
     rows = [[clean(cell) for cell in row] for row in workbook.active.iter_rows(values_only=True)]
@@ -167,8 +167,8 @@ def read_sheet_rows(path):
 def read_docx_rows(path):
     try:
         from docx import Document
-    except ImportError:
-        raise ValueError("python-docx is not installed. Run: pip install python-docx")
+    except ImportError as error:
+        raise ValueError("python-docx is not installed. Run: pip install python-docx") from error
 
     document = Document(path)
 
@@ -185,8 +185,8 @@ def read_docx_rows(path):
 def read_pdf_rows(path):
     try:
         import pdfplumber
-    except ImportError:
-        raise ValueError("pdfplumber is not installed. Run: pip install pdfplumber")
+    except ImportError as error:
+        raise ValueError("pdfplumber is not installed. Run: pip install pdfplumber") from error
 
     table_rows = []
     text_lines = []

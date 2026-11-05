@@ -88,20 +88,38 @@ MAIL_SENDER = os.environ.get("SGP_MAIL_SENDER", "no-reply@student-grade-portal")
 # ---------------------------- attendance ----------------------------
 ATTENDANCE_STATUSES = ["present", "absent", "late"]
 
+# ------------------------- terms and exams --------------------------
+# Used by the term-wise marks / transcript feature.
+TERMS = ["Term 1", "Term 2", "Term 3"]
+EXAMS = ["Mid-Term", "Final"]
+
 # ------------------------------- API --------------------------------
 # When set, the JSON API accepts this value in the X-API-Token header.
+# Database-issued API keys (api_keys table) are also accepted.
 API_TOKEN = os.environ.get("SGP_API_TOKEN", "dev-api-token")
+
+# -------------------------- rate limiting ---------------------------
+RATE_LIMIT_ENABLED = _flag("SGP_RATE_LIMIT", "1")
+LOGIN_RATE_LIMIT = _int("SGP_LOGIN_RATE_LIMIT", 20)      # attempts per minute per IP
+API_RATE_LIMIT = _int("SGP_API_RATE_LIMIT", 120)          # requests per minute per IP
+
+# ------------------------ security headers --------------------------
+SECURITY_HEADERS = _flag("SGP_SECURITY_HEADERS", "1")
+
+# Placeholder values that must never reach production.
+DEFAULT_SECRET_KEY = "dev-secret-change-me"
+DEFAULT_API_TOKEN = "dev-api-token"
 
 # ---------------------------- permissions ---------------------------
 PERMISSIONS = {
     "admin": [
         "add", "view", "search", "update", "delete", "export", "stats",
         "report", "import", "marks", "attendance", "audit", "users",
-        "subjects", "archive",
+        "subjects", "archive", "transcripts", "email", "apikeys",
     ],
     "faculty": [
         "add", "view", "search", "update", "export", "stats",
-        "report", "import", "marks", "attendance",
+        "report", "import", "marks", "attendance", "transcripts", "email",
     ],
 }
 
@@ -112,3 +130,24 @@ DEFAULT_USERS = [
     ("admin", "admin123", "admin"),
     ("faculty", "faculty123", "faculty"),
 ]
+
+
+class ConfigurationError(RuntimeError):
+    """Raised when the environment is unsafe to run in."""
+
+
+def validate_config():
+    """Refuse to start in production with the shipped placeholder secrets."""
+    if not IS_PRODUCTION:
+        return
+    problems = []
+    if SECRET_KEY == DEFAULT_SECRET_KEY:
+        problems.append("SGP_SECRET_KEY is still the default value")
+    if API_TOKEN == DEFAULT_API_TOKEN:
+        problems.append("SGP_API_TOKEN is still the default value")
+    if not SESSION_COOKIE_SECURE:
+        problems.append("SGP_COOKIE_SECURE must be enabled in production")
+    if problems:
+        raise ConfigurationError(
+            "Unsafe production configuration: " + "; ".join(problems)
+        )

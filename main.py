@@ -1,5 +1,7 @@
+import sys
+
 from auth import can, login
-from database import create_table
+from database import backup_to, create_table
 from export import export_to_csv
 from students import (
     add_student,
@@ -79,5 +81,14 @@ def menu():
             print("Invalid choice. Please enter a number between 1 and 9.")
 
 
+def backup_command(argv):
+    target = argv[2] if len(argv) > 2 else "students-backup.db"
+    create_table()
+    print(f"Database backed up to {backup_to(target)}")
+
+
 if __name__ == "__main__":
-    menu()
+    if len(sys.argv) > 1 and sys.argv[1] == "backup":
+        backup_command(sys.argv)
+    else:
+        menu()

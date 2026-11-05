@@ -25,6 +25,34 @@
   </div>
   {% endfor %}
 </div>
+
+<h3>Grade distribution</h3>
+<canvas id="grade-chart" height="120" role="img" aria-label="Distribution of grades across the class"></canvas>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+<script>
+  window.addEventListener("DOMContentLoaded", function () {
+    if (typeof Chart === "undefined") {
+      return;
+    }
+    var distribution = {{ grade_distribution|tojson }};
+    new Chart(document.getElementById("grade-chart"), {
+      type: "bar",
+      data: {
+        labels: distribution.map(function (entry) { return entry[0]; }),
+        datasets: [{
+          label: "Students",
+          data: distribution.map(function (entry) { return entry[1]; }),
+          backgroundColor: "#0e7490"
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+      }
+    });
+  });
+</script>
 {% else %}
 <p>No records found.</p>
 {% endif %}

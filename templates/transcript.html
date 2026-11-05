@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="report">
+  <h2>Transcript</h2>
+
+  <div class="report-head">
+    <span class="who">{{ student.name }}</span>
+    <span class="reg">{{ student.reg_no }}</span>
+  </div>
+
+  <p class="hint">
+    Class {{ details.get('student_class') or "-" }} &nbsp;|&nbsp;
+    Section {{ details.get('section') or "-" }} &nbsp;|&nbsp;
+    Academic year {{ details.get('academic_year') or "-" }}
+  </p>
+
+  {% if terms %}
+  {% for term in terms %}
+  <h3>{{ term.term }}</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Subject</th>
+        {% for exam in exams %}<th>{{ exam }}</th>{% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in term.rows %}
+      <tr>
+        <td>{{ row.subject }}</td>
+        {% for exam in exams %}
+        <td>{{ row.marks[exam] if row.marks[exam] is not none else "-" }}</td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="hint">
+    Earned {{ term.earned }} of {{ term.maximum }}
+    ({{ "%.2f"|format(term.percentage) }}%) - Grade {{ term.grade }}
+  </p>
+  {% endfor %}
+
+  <h3>Overall</h3>
+  <div class="cards">
+    <div class="stat"><span>Earned</span><strong>{{ overall.earned }}</strong></div>
+    <div class="stat"><span>Maximum</span><strong>{{ overall.maximum }}</strong></div>
+    <div class="stat"><span>Percentage</span><strong>{{ "%.2f"|format(overall.percentage) }}%</strong></div>
+    <div class="stat"><span>Grade</span><strong>{{ overall.grade }}</strong></div>
+  </div>
+  {% else %}
+  <p>No term marks recorded for this student yet.</p>
+  {% endif %}
+
+  <div class="report-actions no-print">
+    <a class="button" href="{{ url_for('transcript_pdf_page', reg_no=student.reg_no) }}">Download PDF</a>
+    <a class="button" href="{{ url_for('report_page', reg_no=student.reg_no) }}">Report card</a>
+    <a class="button" href="{{ url_for('index') }}">Back to students</a>
+  </div>
+</div>
+{% endblock %}
