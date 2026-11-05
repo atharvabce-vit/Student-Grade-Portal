@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Class Statistics</h2>
+
+{% if stats.count > 0 %}
+<div class="cards">
+  <div class="stat"><span>Total students</span><strong>{{ stats.count }}</strong></div>
+  <div class="stat"><span>Class average</span><strong>{{ "%.2f"|format(stats.average) }}%</strong></div>
+  <div class="stat"><span>Passed</span><strong>{{ stats.passed }} ({{ "%.2f"|format(stats.pass_percentage) }}%)</strong></div>
+  <div class="stat"><span>Topper</span><strong>{{ stats.topper[0] }} - {{ "%.2f"|format(stats.topper[2]) }}%</strong></div>
+  <div class="stat"><span>Lowest scorer</span><strong>{{ stats.lowest[0] }} - {{ "%.2f"|format(stats.lowest[2]) }}%</strong></div>
+</div>
+
+<h3>Subject averages</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Subject</th>
+      <th>Average marks</th>
+      <th>Out of</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for subject in subjects %}
+    <tr>
+      <td>{{ subject }}</td>
+      <td>{{ "%.2f"|format(stats.subject_averages[loop.index0]) }}</td>
+      <td>{{ max_mark }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No records found.</p>
+{% endif %}
+{% endblock %}

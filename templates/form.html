@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% if student %}
+<h2>Edit Student - {{ student.reg_no }}</h2>
+{% else %}
+<h2>Add Student</h2>
+{% endif %}
+
+<form method="post" class="card">
+  {% if student %}
+  <label>Registration number
+    <input type="text" value="{{ student.reg_no }}" disabled>
+  </label>
+  {% else %}
+  <p class="hint">The registration number is generated automatically and follows a fixed sequence.</p>
+  {% endif %}
+
+  <label>Name
+    <input type="text" name="name" value="{{ student.name if student else '' }}" required>
+  </label>
+
+  <fieldset>
+    <legend>Marks (out of {{ max_mark }})</legend>
+    {% for subject in subjects %}
+    <label>{{ subject }}
+      <input type="number" name="{{ subject }}" min="0" max="{{ max_mark }}"
+             value="{{ student.marks[loop.index0] if student else '' }}" required>
+    </label>
+    {% endfor %}
+  </fieldset>
+
+  <button type="submit">{{ "Update" if student else "Save" }}</button>
+  <a class="button" href="{{ url_for('index') }}">Cancel</a>
+</form>
+{% endblock %}

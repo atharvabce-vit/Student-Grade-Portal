@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Import Students</h2>
+
+<form method="post" enctype="multipart/form-data" class="card">
+  <label>Choose a file
+    <input type="file" name="file" accept=".csv,.tsv,.xlsx,.xlsm,.pdf,.docx,.txt" required>
+  </label>
+
+  <p class="hint">
+    Supported files: .csv, .tsv, .xlsx, .pdf, .docx and .txt.
+    The first row must be the column headers, with a <strong>Name</strong> column and one
+    column per subject ({{ subjects|join(", ") }}). Marks are out of {{ max_mark }}.
+    Extra columns such as roll number are ignored.
+  </p>
+
+  <p class="hint">
+    Using Google Docs or Google Sheets? Export the file first
+    (File &gt; Download &gt; .docx, .pdf, .xlsx or .csv), then upload it here.
+  </p>
+
+  <button type="submit">Upload and Import</button>
+  <a class="button" href="{{ url_for('template_page') }}">Download CSV template</a>
+</form>
+{% endblock %}

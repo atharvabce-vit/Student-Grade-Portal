@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Login</h2>
+
+<form method="post" class="card">
+  <label>Username
+    <input type="text" name="username" required autofocus>
+  </label>
+  <label>Password
+    <input type="password" name="password" required>
+  </label>
+  <button type="submit">Login</button>
+</form>
+
+<p class="hint">
+  Demo accounts - admin / admin123 (full access) and faculty / faculty123 (cannot delete).
+</p>
+{% endblock %}

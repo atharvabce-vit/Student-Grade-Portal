@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Student Grade Portal</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header>
+  <h1>Student Grade Portal</h1>
+  {% if role %}
+  <nav>
+    <a href="{{ url_for('index') }}">Students</a>
+    <a href="{{ url_for('add_student_page') }}">Add Student</a>
+    <a href="{{ url_for('import_page') }}">Import</a>
+    <a href="{{ url_for('stats_page') }}">Statistics</a>
+    <a href="{{ url_for('export_page') }}">Export CSV</a>
+    <span class="role">{{ role }}</span>
+    <a href="{{ url_for('logout') }}">Logout</a>
+  </nav>
+  {% endif %}
+</header>
+
+<main>
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}
+      <ul class="flash">
+        {% for message in messages %}
+          <li>{{ message }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  {% endwith %}
+
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>
