@@ -42,9 +42,60 @@
     </tbody>
   </table>
 
+  <h3>Student details</h3>
+  <table>
+    <tbody>
+      <tr><th>Class</th><td>{{ details.get('student_class') or "-" }}</td></tr>
+      <tr><th>Section</th><td>{{ details.get('section') or "-" }}</td></tr>
+      <tr><th>Academic year</th><td>{{ details.get('academic_year') or "-" }}</td></tr>
+      <tr><th>Term</th><td>{{ details.get('term') or "-" }}</td></tr>
+      <tr><th>Gender</th><td>{{ details.get('gender') or "-" }}</td></tr>
+      <tr><th>Date of birth</th><td>{{ details.get('dob') or "-" }}</td></tr>
+      <tr><th>Guardian</th><td>{{ details.get('guardian') or "-" }}</td></tr>
+      <tr><th>Email</th><td>{{ details.get('email') or "-" }}</td></tr>
+      <tr><th>Phone</th><td>{{ details.get('phone') or "-" }}</td></tr>
+    </tbody>
+  </table>
+
   <div class="report-actions no-print">
     <button type="button" class="button" onclick="window.print()">Print / Save as PDF</button>
     <a class="button" href="{{ url_for('index') }}">Back to students</a>
   </div>
+
+  {% if attendance %}
+  <h3 class="no-print">Recent attendance</h3>
+  <table class="no-print">
+    <thead>
+      <tr><th>Day</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+      {% for day, status in attendance %}
+      <tr>
+        <td>{{ day }}</td>
+        <td class="{{ 'pass' if status == 'present' else ('fail' if status == 'absent' else '') }}">{{ status|capitalize }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if history %}
+  <h3 class="no-print">Change history</h3>
+  <table class="no-print">
+    <thead>
+      <tr><th>When</th><th>User</th><th>Action</th><th>Details</th></tr>
+    </thead>
+    <tbody>
+      {% for created_at, username, action, target, detail in history %}
+      <tr>
+        <td>{{ created_at }}</td>
+        <td>{{ username if username else "-" }}</td>
+        <td>{{ action }}</td>
+        <td>{{ detail if detail else "-" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
 </div>
 {% endblock %}

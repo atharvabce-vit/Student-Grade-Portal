@@ -15,21 +15,33 @@ It can be used two ways, from the same codebase and the same database:
 
 ## Features
 
-- Add a student (name and marks per subject out of 50). The registration number is
+- Add a student (name, marks per subject out of 50, plus optional profile fields such
+  as class, section, term, guardian and contact details). The registration number is
   generated automatically, so it is never typed by the user.
-- View all students with pagination (10 per page), or search by registration number / name
+- View all students with pagination (10 per page), search by registration number / name,
+  and filter by class, section and term
 - Update a student's marks or details
-- Delete a student record (admin only)
-- Automatic total, percentage, letter grade and PASS / FAIL per student
-- Per-student report card page with a clean printable layout (Print / Save as PDF)
+- Quick marks entry: pick a subject and fill in the marks for the whole class at once
+- Attendance: mark present / absent / late per day and see a running summary per student
+- Delete a student record. Deletes are soft by default, so records move to the Archive
+  and can be restored or purged (admin only)
+- Manage subjects and their weights, so the subject list and percentage calculation are
+  not fixed in code (admin only)
+- Automatic total, percentage, letter grade and PASS / FAIL per student (weights aware)
+- Per-student report card page with the profile, attendance and change history, plus a
+  clean printable layout (Print / Save as PDF)
 - Class statistics: average, topper, lowest scorer, pass percentage, subject averages
-- Subject averages shown as bar charts
+- Subject averages and a grade distribution shown as charts
 - Sort by registration number, name, percentage or total, and filter by pass / fail
-- Export all records to CSV (includes total, percentage, grade and result)
+- Export all records to CSV, Excel (.xlsx) or a single PDF of report cards
 - Import students from a document (CSV, TSV, Excel, PDF, Word or plain text). The
   names and subject marks are read out of the file automatically, each student gets a
   generated registration number, and duplicate rows are skipped and reported.
-- Login with two roles: admin and faculty. Passwords are stored as SHA-256 hashes.
+- Login with two roles: admin and faculty. Passwords are stored as PBKDF2 hashes in the
+  database, with a temporary lockout after repeated failures.
+- User management (create accounts, change roles, reset passwords, enable/disable) and
+  an audit log of actions (both admin only)
+- A token protected JSON API and a light / dark theme for the web app
 
 ## Screenshots
 
@@ -45,8 +57,10 @@ It can be used two ways, from the same codebase and the same database:
 
 - Python 3
 - SQLite (built into Python, no server needed)
-- Flask for the web version
+- Flask for the web version, Flask-WTF for CSRF protection
 - openpyxl, pdfplumber and python-docx for the file import
+- reportlab for the PDF report cards, openpyxl again for the Excel export
+- python-dotenv for optional `.env` configuration
 - waitress for running the web app in production
 
 ## Project Structure
@@ -54,21 +68,25 @@ It can be used two ways, from the same codebase and the same database:
 ```
 Student-Grade-Portal-Project/
 ├── main.py          # Command line entry point
-├── app.py           # Web app entry point (Flask)
-├── config.py        # Settings: subjects, marks, grade scale, users
-├── database.py      # All SQLite code (students + marks tables, migration)
-├── grading.py       # Total, percentage, result and letter grade
+├── app.py           # Web app entry point (Flask) and JSON API
+├── config.py        # Settings: env vars, subjects, marks, grade scale, permissions
+├── database.py      # All SQLite code (students, marks, subjects, users, audit, attendance)
+├── grading.py       # Total, percentage (weights aware), result and letter grade
 ├── reports.py       # Class statistics, sorting, filtering
-├── auth.py          # Login (hashed passwords) and permission checks
+├── auth.py          # Login, login lockout and permission checks
+├── users.py         # User accounts: hashing, lookup and management
+├── logging_setup.py # Console + rotating file logging
 ├── students.py      # Command line menu actions
 ├── importer.py      # Reads CSV, Excel, PDF, Word and text files
-├── export.py        # CSV export
+├── export.py        # CSV and Excel export
+├── pdf_reports.py   # Batch PDF report cards
 ├── templates/       # HTML pages for the web app
-├── static/          # CSS for the web app
+├── static/          # CSS and JS for the web app
 ├── tests/           # Unit tests (unittest)
 ├── docs/screenshots # Screenshots used in this README
 ├── Dockerfile       # Container image for deployment
 ├── .dockerignore
+├── .env.example     # Sample environment configuration
 ├── .github/workflows/ci.yml   # GitHub Actions test workflow
 ├── requirements.txt
 ├── .gitignore
@@ -84,9 +102,10 @@ Install the dependencies:
 pip install -r requirements.txt
 ```
 
-The command line version and CSV / TSV / text import only need the standard
-library. Flask is needed for the web version, and openpyxl, pdfplumber and
-python-docx are only needed when importing Excel, PDF or Word files.
+The command line version and CSV / TSV / text import only need the standard library
+plus Werkzeug (pulled in by Flask) for password hashing. Flask and Flask-WTF are needed
+for the web version, reportlab for the PDF export, and openpyxl, pdfplumber and
+python-docx only when importing or exporting Excel, PDF or Word files.
 
 ## Run the command line version
 
@@ -119,18 +138,28 @@ docker run -p 5000:5000 student-grade-portal
 
 Then open http://127.0.0.1:5000.
 
+## Configuration
+
+Settings live in `config.py` and every value can be overridden with an environment
+variable or a `.env` file. Copy `.env.example` to `.env` and adjust as needed. The
+defaults work out of the box for development; set `SGP_ENV=production` to force a
+secure session cookie and turn the debug reloader off.
+
 ## Login
 
-Two demo accounts are defined in `config.py`:
+Two demo accounts are created automatically the first time the database is
+initialised (on first run, or on first login with the command line version):
 
 | Username | Password   | Role    | Can do |
 |----------|------------|---------|--------|
-| admin    | admin123   | admin   | everything, including delete |
-| faculty  | faculty123 | faculty | add, view, search, update, stats, export, report (no delete) |
+| admin    | admin123   | admin   | everything, including archive, subjects, users and audit |
+| faculty  | faculty123 | faculty | add, view, search, update, marks, attendance, import, stats, report, export (no archive, subjects, users or audit) |
 
-Passwords are not stored in plain text: `config.py` keeps a SHA-256 hash of each
-password (with a static salt) and `auth.py` hashes whatever is typed at login and
-compares the hashes. To change a password, replace the hash in `config.py`.
+Passwords are never stored in plain text: `users.py` stores a PBKDF2 hash of each
+password and `auth.py` verifies whatever is typed at login. After several failed
+attempts for the same username the account is locked out temporarily. Manage accounts
+(create, change roles, reset passwords, enable/disable, delete) from the Users page,
+which is admin only. Change the demo passwords after the first login.
 
 ## Tests
 
@@ -154,7 +183,13 @@ Defined in `config.py`:
 | Marks per subject | Out of 50 |
 | Pass mark | 20 in every subject |
 
-Percentage is calculated as `total / (number of subjects * 50) * 100`.
+Percentage is calculated as `total / (number of subjects * 50) * 100`. Each subject also
+has a weight (1 by default, editable on the Subjects page); when weights are set the
+percentage becomes `sum(mark * weight) / sum(50 * weight) * 100`, so a heavier subject
+counts for more.
+
+The subject list itself is stored in the database and can be changed on the Subjects
+page (admin only), so it is not fixed to the five subjects in `config.py` at runtime.
 
 Letter grade comes from the percentage:
 
@@ -234,9 +269,52 @@ Working with Google Docs and Google Sheets:
 - From Google Docs, use File, Download and pick PDF or Microsoft Word (.docx), and
   put the data in a table so it can be read.
 
+## Marks entry, attendance and archive
+
+- Marks entry (admins and faculty): pick a subject, fill in a mark for each student and
+  save the whole column in one go. Empty boxes are left unchanged.
+- Attendance (admins and faculty): pick a date, set each student to present / absent /
+  late and save. The page also shows a running present rate per student, and each
+  student's recent attendance appears on their report card.
+- Archive (admins): deleting a student moves them to the Archive instead of removing
+  the row, so a record can be restored or purged permanently.
+
+## Exports
+
+From the web app you can download:
+
+- CSV of all records (`Export CSV` in the navigation bar)
+- Excel `.xlsx` of all records (`/export/excel`)
+- A single PDF of printable report cards, one page per student (`/export/pdf`)
+
+## JSON API
+
+A small read/write API is available for other programs. Send the token from
+`SGP_API_TOKEN` (default `dev-api-token`) in the `X-API-Token` header.
+
+| Method | Path | What it does |
+|--------|------|--------------|
+| GET | `/api/students` | List every student with marks and computed fields |
+| POST | `/api/students` | Create a student from `{"name": "...", "marks": [...]}` |
+| GET | `/api/students/<reg_no>` | Fetch one student with profile fields |
+| DELETE | `/api/students/<reg_no>` | Permanently delete one student |
+| GET | `/api/openapi.json` | OpenAPI description of the endpoints |
+
+The web app also has an `API` page in the navigation bar that documents these. Change
+the token in production.
+
+## Audit log and users
+
+- Every add, update, delete, import, login and admin action is written to an audit log,
+  visible on the Audit page (admin only) and per student on the report card.
+- The Users page (admin only) lets an admin create accounts, change roles, reset
+  passwords, and enable or disable accounts.
+
 ## Database Schema
 
-The database `students.db` has two tables, so the list of subjects is flexible.
+The database `students.db` keeps students and their marks in separate tables, so the
+list of subjects is flexible, along with tables for subjects, users, the audit log,
+attendance and the registration counter.
 
 `students`:
 
@@ -244,6 +322,9 @@ The database `students.db` has two tables, so the list of subjects is flexible.
 |--------|------|-------|
 | reg_no | TEXT | Primary key, generated automatically |
 | name   | TEXT | Student name |
+| email, phone, student_class, section, gender, dob, guardian, academic_year, term | TEXT | Optional profile fields |
+| is_deleted | INTEGER | 1 when the record is in the Archive |
+| created_at | TEXT | When the row was created |
 
 `marks`:
 
@@ -253,9 +334,30 @@ The database `students.db` has two tables, so the list of subjects is flexible.
 | subject | TEXT    | Subject name |
 | mark    | INTEGER | Out of 50 |
 
+`subjects`:
+
+| Column   | Type    | Notes |
+|----------|---------|-------|
+| name     | TEXT    | Primary key |
+| position | INTEGER | Display order |
+| weight   | REAL    | Weight used in the percentage (default 1) |
+
+`users`:
+
+| Column | Type | Notes |
+|--------|------|-------|
+| username | TEXT | Primary key |
+| password_hash | TEXT | PBKDF2 hash |
+| role | TEXT | admin or faculty |
+| is_active | INTEGER | 0 disables the account |
+| created_at | TEXT | When the account was created |
+
+`audit_log`, `attendance` and `settings` hold the action history, per-day attendance and
+the last generated registration number respectively.
+
 The old single-table layout (with a `maths`, `physics`, ... column each) is upgraded
 automatically on first run: `database.py` detects it and moves the data into the two
-tables above.
+tables above. Extra profile columns are added to an existing `students` table in place.
 
 ## Notes
 

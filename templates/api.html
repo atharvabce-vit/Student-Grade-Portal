@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>JSON API</h2>
+
+<p class="hint">
+  The API lets other programs read and manage student records without the web pages.
+  Send the token from the <code>SGP_API_TOKEN</code> setting in the
+  <code>X-API-Token</code> header on every request.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Method</th>
+      <th>Path</th>
+      <th>What it does</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>GET</td>
+      <td>/api/students</td>
+      <td>List every student with marks, total, percentage, grade and result.</td>
+    </tr>
+    <tr>
+      <td>POST</td>
+      <td>/api/students</td>
+      <td>Create a student from a JSON body: <code>{"name": "...", "marks": [...]}</code>.</td>
+    </tr>
+    <tr>
+      <td>GET</td>
+      <td>/api/students/&lt;reg_no&gt;</td>
+      <td>Fetch one student together with the extra profile fields.</td>
+    </tr>
+    <tr>
+      <td>DELETE</td>
+      <td>/api/students/&lt;reg_no&gt;</td>
+      <td>Permanently delete one student.</td>
+    </tr>
+    <tr>
+      <td>GET</td>
+      <td>/api/openapi.json</td>
+      <td>Machine-readable OpenAPI description of the endpoints.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Example</h3>
+<pre><code>curl -H "X-API-Token: $SGP_API_TOKEN" http://127.0.0.1:5000/api/students</code></pre>
+
+<p class="hint">
+  The API is exempt from the browser CSRF check because it is meant for server-to-server
+  calls, so keep the token secret and change it in production.
+</p>
+{% endblock %}

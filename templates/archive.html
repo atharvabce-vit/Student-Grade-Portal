@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Archive</h2>
+
+<p class="hint">Deleted records are kept here so they can be restored. Purging removes them permanently.</p>
+
+{% if students %}
+<table>
+  <thead>
+    <tr>
+      <th>Reg No</th>
+      <th>Name</th>
+      <th>Class</th>
+      <th>Section</th>
+      <th>Total</th>
+      <th>%</th>
+      <th>Grade</th>
+      <th>Result</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for student in students %}
+    <tr>
+      <td>{{ student.reg_no }}</td>
+      <td>{{ student.name }}</td>
+      <td>{{ student.student_class if student.student_class else "-" }}</td>
+      <td>{{ student.section if student.section else "-" }}</td>
+      <td>{{ student.total }}</td>
+      <td>{{ "%.1f"|format(student.percentage) }}</td>
+      <td>{{ student.grade }}</td>
+      <td class="{{ student.result|lower }}">{{ student.result }}</td>
+      <td class="actions">
+        <form method="post" action="{{ url_for('restore_student_page', reg_no=student.reg_no) }}" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit">Restore</button>
+        </form>
+        <form method="post" action="{{ url_for('purge_student_page', reg_no=student.reg_no) }}"
+              onsubmit="return confirm('Permanently delete this record? This cannot be undone.');" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="danger">Purge</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No archived records.</p>
+{% endif %}
+{% endblock %}

@@ -4,6 +4,7 @@
 <h2>Login</h2>
 
 <form method="post" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <label>Username
     <input type="text" name="username" required autofocus>
   </label>
@@ -15,5 +16,6 @@
 
 <p class="hint">
   Demo accounts - admin / admin123 (full access) and faculty / faculty123 (cannot delete).
+  Change these from the Users page after the first login.
 </p>
 {% endblock %}

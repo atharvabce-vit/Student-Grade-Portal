@@ -1,7 +1,55 @@
-DB_NAME = "students.db"
+"""Central settings for the Student Grade Portal.
 
-CSV_FILE = "student_records.csv"
+Every value can be overridden with an environment variable (or a `.env` file),
+which keeps secrets and machine specific paths out of the source code.
+"""
 
+import os
+
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:  # python-dotenv is optional
+    pass
+
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _flag(name, default="0"):
+    return os.environ.get(name, default).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _int(name, default):
+    try:
+        return int(os.environ.get(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+# ---------------------------- environment ----------------------------
+ENV = os.environ.get("SGP_ENV", "development").strip().lower()
+IS_PRODUCTION = ENV == "production"
+DEBUG = _flag("SGP_DEBUG", "0" if IS_PRODUCTION else "1")
+
+SECRET_KEY = os.environ.get("SGP_SECRET_KEY", "dev-secret-change-me")
+
+# ------------------------------ files -------------------------------
+DB_NAME = os.environ.get("SGP_DB_NAME", os.path.join(BASE_DIR, "students.db"))
+CSV_FILE = os.environ.get("SGP_CSV_FILE", os.path.join(BASE_DIR, "student_records.csv"))
+LOG_FILE = os.environ.get("SGP_LOG_FILE", os.path.join(BASE_DIR, "app.log"))
+LOG_LEVEL = os.environ.get("SGP_LOG_LEVEL", "INFO").upper()
+
+# ----------------------------- session ------------------------------
+SESSION_LIFETIME_MINUTES = _int("SGP_SESSION_MINUTES", 60)
+SESSION_COOKIE_SECURE = _flag("SGP_COOKIE_SECURE", "1" if IS_PRODUCTION else "0")
+
+# -------------------------- login lockout ---------------------------
+LOGIN_MAX_ATTEMPTS = _int("SGP_LOGIN_MAX_ATTEMPTS", 5)
+LOGIN_LOCKOUT_SECONDS = _int("SGP_LOGIN_LOCKOUT_SECONDS", 300)
+
+# ----------------------------- grading ------------------------------
 SUBJECTS = ["Maths", "Physics", "Chemistry", "English", "Computer"]
 
 MAX_MARK = 50
@@ -17,28 +65,50 @@ GRADE_SCALE = [
     (40, "D"),
 ]
 
+# ------------------------- registration numbers ---------------------
 REG_PREFIX = "SGP"
 
 REG_START_MIN = 1000
 
 REG_START_MAX = 9000
 
-PAGE_SIZE = 10
+# ------------------------------ paging ------------------------------
+PAGE_SIZE = _int("SGP_PAGE_SIZE", 10)
 
-PASSWORD_SALT = "sgp_salt_2026"
+# ------------------------------ email -------------------------------
+# Used by the optional "email report card" feature. Leave disabled unless
+# SMTP details are provided.
+MAIL_ENABLED = _flag("SGP_MAIL_ENABLED", "0")
+MAIL_SERVER = os.environ.get("SGP_MAIL_SERVER", "")
+MAIL_PORT = _int("SGP_MAIL_PORT", 587)
+MAIL_USERNAME = os.environ.get("SGP_MAIL_USERNAME", "")
+MAIL_PASSWORD = os.environ.get("SGP_MAIL_PASSWORD", "")
+MAIL_SENDER = os.environ.get("SGP_MAIL_SENDER", "no-reply@student-grade-portal")
 
-USERS = {
-    "admin": {
-        "password": "c4aad0196a9a86deb56ae8165237bcc7c8d66158d9049b539556d058af2db240",
-        "role": "admin",
-    },
-    "faculty": {
-        "password": "b58b4f92f2d8b39842157b6a6faaee37cfbf1409a251c6d8f2ebfe1e138240cb",
-        "role": "faculty",
-    },
-}
+# ---------------------------- attendance ----------------------------
+ATTENDANCE_STATUSES = ["present", "absent", "late"]
 
+# ------------------------------- API --------------------------------
+# When set, the JSON API accepts this value in the X-API-Token header.
+API_TOKEN = os.environ.get("SGP_API_TOKEN", "dev-api-token")
+
+# ---------------------------- permissions ---------------------------
 PERMISSIONS = {
-    "admin": ["add", "view", "search", "update", "delete", "export", "stats", "report"],
-    "faculty": ["add", "view", "search", "update", "export", "stats", "report"],
+    "admin": [
+        "add", "view", "search", "update", "delete", "export", "stats",
+        "report", "import", "marks", "attendance", "audit", "users",
+        "subjects", "archive",
+    ],
+    "faculty": [
+        "add", "view", "search", "update", "export", "stats",
+        "report", "import", "marks", "attendance",
+    ],
 }
+
+# --------------------- default users (first run) --------------------
+# Created automatically the first time the database is initialised.
+# Change the passwords after the first login.
+DEFAULT_USERS = [
+    ("admin", "admin123", "admin"),
+    ("faculty", "faculty123", "faculty"),
+]

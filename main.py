@@ -10,6 +10,7 @@ from students import (
     update_student,
     view_all_students,
 )
+from users import seed_default_users
 
 
 def do_login():
@@ -40,11 +41,12 @@ def show_menu():
 
 
 def menu():
+    create_table()
+    seed_default_users()
+
     role = do_login()
     if role is None:
         return
-
-    create_table()
 
     while True:
         show_menu()
@@ -68,7 +70,8 @@ def menu():
         elif choice == "7":
             import_students_from_file()
         elif choice == "8":
-            export_to_csv()
+            path, count = export_to_csv()
+            print(f"Exported {count} student(s) to {path}")
         elif choice == "9":
             print("Goodbye!")
             break

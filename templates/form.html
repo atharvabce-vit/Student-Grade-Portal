@@ -8,6 +8,7 @@
 {% endif %}
 
 <form method="post" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   {% if student %}
   <label>Registration number
     <input type="text" value="{{ student.reg_no }}" disabled>
@@ -28,6 +29,43 @@
              value="{{ student.marks[loop.index0] if student else '' }}" required>
     </label>
     {% endfor %}
+  </fieldset>
+
+  <fieldset>
+    <legend>Student details (optional)</legend>
+    <label>Class
+      <input type="text" name="student_class" value="{{ details.get('student_class', '') }}">
+    </label>
+    <label>Section
+      <input type="text" name="section" value="{{ details.get('section', '') }}">
+    </label>
+    <label>Academic year
+      <input type="text" name="academic_year" value="{{ details.get('academic_year', '') }}">
+    </label>
+    <label>Term
+      <input type="text" name="term" value="{{ details.get('term', '') }}">
+    </label>
+    <label>Gender
+      <select name="gender">
+        {% set gender = details.get('gender', '') %}
+        <option value="" {% if gender == '' %}selected{% endif %}>Not specified</option>
+        <option value="Female" {% if gender == 'Female' %}selected{% endif %}>Female</option>
+        <option value="Male" {% if gender == 'Male' %}selected{% endif %}>Male</option>
+        <option value="Other" {% if gender == 'Other' %}selected{% endif %}>Other</option>
+      </select>
+    </label>
+    <label>Date of birth
+      <input type="date" name="dob" value="{{ details.get('dob', '') }}">
+    </label>
+    <label>Guardian
+      <input type="text" name="guardian" value="{{ details.get('guardian', '') }}">
+    </label>
+    <label>Email
+      <input type="email" name="email" value="{{ details.get('email', '') }}">
+    </label>
+    <label>Phone
+      <input type="text" name="phone" value="{{ details.get('phone', '') }}">
+    </label>
   </fieldset>
 
   <button type="submit">{{ "Update" if student else "Save" }}</button>

@@ -6,6 +6,7 @@ from database import (
     fetch_student,
     insert_student,
     search_students,
+    subject_names,
     update_student_record,
 )
 from grading import calculate, get_grade
@@ -30,8 +31,9 @@ def display_students(students):
         print("No records found.")
         return
 
+    names = subject_names()
     header = f"{'Reg No':<10}{'Name':<20}"
-    for subject in SUBJECTS:
+    for subject in names:
         header += f"{subject[:8]:>9}"
     header += f"{'Total':>7}{'%':>7}{'Grade':>7}{'Result':>8}"
 
@@ -40,7 +42,7 @@ def display_students(students):
     print("-" * 104)
 
     for row in students:
-        marks = row[2:2 + len(SUBJECTS)]
+        marks = row[2:2 + len(names)]
         total, percentage, result = calculate(marks)
         grade = get_grade(percentage)
 
@@ -62,7 +64,7 @@ def add_student():
         return
 
     marks = []
-    for subject in SUBJECTS:
+    for subject in subject_names():
         marks.append(get_marks(subject))
 
     reg_no = insert_student(name, marks)
@@ -140,8 +142,9 @@ def show_statistics():
     print(f"Topper           : {summary['topper'][0]} ({summary['topper'][1]}) - {summary['topper'][2]:.2f}%")
     print(f"Lowest scorer    : {summary['lowest'][0]} ({summary['lowest'][1]}) - {summary['lowest'][2]:.2f}%")
     print("Subject averages :")
-    for i in range(len(SUBJECTS)):
-        print(f"   {SUBJECTS[i]:<10} {summary['subject_averages'][i]:.2f} / {MAX_MARK}")
+    names = subject_names()
+    for i in range(len(names)):
+        print(f"   {names[i]:<10} {summary['subject_averages'][i]:.2f} / {MAX_MARK}")
 
 
 def search_student():
@@ -177,7 +180,8 @@ def update_student():
         return
 
     name = row[1]
-    marks = list(row[2:2 + len(SUBJECTS)])
+    names = subject_names()
+    marks = list(row[2:2 + len(names)])
 
     if choice in ("1", "3"):
         new_name = input("Enter new name: ").strip()
@@ -185,8 +189,8 @@ def update_student():
             name = new_name
 
     if choice in ("2", "3"):
-        for i in range(len(SUBJECTS)):
-            marks[i] = get_marks(SUBJECTS[i])
+        for i in range(len(names)):
+            marks[i] = get_marks(names[i])
 
     update_student_record(reg_no, name, marks)
     print("Record updated successfully.")

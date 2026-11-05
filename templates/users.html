@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Users</h2>
+
+<form method="post" action="{{ url_for('add_user_page') }}" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <fieldset>
+    <legend>Add a user</legend>
+    <label>Username
+      <input type="text" name="username" required>
+    </label>
+    <label>Password
+      <input type="password" name="password" required>
+    </label>
+    <label>Role
+      <select name="role">
+        <option value="faculty">faculty</option>
+        <option value="admin">admin</option>
+      </select>
+    </label>
+  </fieldset>
+  <button type="submit">Create user</button>
+</form>
+
+<h3>Existing accounts</h3>
+<table>
+  <thead>
+    <tr>
+      <th>Username</th>
+      <th>Role</th>
+      <th>Status</th>
+      <th>Created</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for username, user_role, is_active, created_at in users %}
+    <tr>
+      <td>{{ username }}{% if username == session.get('username') %} (you){% endif %}</td>
+      <td>
+        <form method="post" action="{{ url_for('change_user_role', username=username) }}" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <select name="role">
+            <option value="faculty" {% if user_role == 'faculty' %}selected{% endif %}>faculty</option>
+            <option value="admin" {% if user_role == 'admin' %}selected{% endif %}>admin</option>
+          </select>
+          <button type="submit">Save</button>
+        </form>
+      </td>
+      <td class="{{ 'pass' if is_active else 'fail' }}">{{ "active" if is_active else "disabled" }}</td>
+      <td>{{ created_at }}</td>
+      <td class="actions">
+        <form method="post" action="{{ url_for('change_user_password', username=username) }}" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="password" name="password" placeholder="New password" required>
+          <button type="submit">Set</button>
+        </form>
+        <form method="post" action="{{ url_for('toggle_user', username=username) }}" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="active" value="{{ '0' if is_active else '1' }}">
+          <button type="submit">{{ "Disable" if is_active else "Enable" }}</button>
+        </form>
+        {% if username != session.get('username') %}
+        <form method="post" action="{{ url_for('remove_user', username=username) }}"
+              onsubmit="return confirm('Delete this user?');" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="danger">Delete</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<p class="hint">Passwords are stored as PBKDF2 hashes. Disable an account instead of deleting it to keep its audit trail.</p>
+{% endblock %}

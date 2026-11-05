@@ -16,6 +16,30 @@
     <option value="pass" {% if result_filter == 'pass' %}selected{% endif %}>Pass only</option>
     <option value="fail" {% if result_filter == 'fail' %}selected{% endif %}>Fail only</option>
   </select>
+  {% if classes %}
+  <select name="class">
+    <option value="">All classes</option>
+    {% for name in classes %}
+    <option value="{{ name }}" {% if class_filter == name %}selected{% endif %}>{{ name }}</option>
+    {% endfor %}
+  </select>
+  {% endif %}
+  {% if sections %}
+  <select name="section">
+    <option value="">All sections</option>
+    {% for name in sections %}
+    <option value="{{ name }}" {% if section_filter == name %}selected{% endif %}>{{ name }}</option>
+    {% endfor %}
+  </select>
+  {% endif %}
+  {% if terms %}
+  <select name="term">
+    <option value="">All terms</option>
+    {% for name in terms %}
+    <option value="{{ name }}" {% if term_filter == name %}selected{% endif %}>{{ name }}</option>
+    {% endfor %}
+  </select>
+  {% endif %}
   <button type="submit">Apply</button>
   <a class="button" href="{{ url_for('add_student_page') }}">Add Student</a>
 </form>
@@ -50,6 +74,7 @@
         {% if can_delete %}
         <form method="post" action="{{ url_for('delete_student_page', reg_no=student.reg_no) }}"
               onsubmit="return confirm('Delete this record?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="danger">Delete</button>
         </form>
         {% endif %}
@@ -61,11 +86,11 @@
 
 <div class="pager no-print">
   {% if page > 1 %}
-  <a href="{{ url_for('index', sort=sort_by, filter=result_filter, q=keyword, page=page-1) }}">Previous</a>
+  <a href="{{ url_for('index', sort=sort_by, filter=result_filter, q=keyword, class=class_filter, section=section_filter, term=term_filter, page=page-1) }}">Previous</a>
   {% endif %}
   <span class="current">Page {{ page }} of {{ page_count }}</span>
   {% if page < page_count %}
-  <a href="{{ url_for('index', sort=sort_by, filter=result_filter, q=keyword, page=page+1) }}">Next</a>
+  <a href="{{ url_for('index', sort=sort_by, filter=result_filter, q=keyword, class=class_filter, section=section_filter, term=term_filter, page=page+1) }}">Next</a>
   {% endif %}
   <span class="count">{{ total }} student(s)</span>
 </div>

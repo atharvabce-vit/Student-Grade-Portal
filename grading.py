@@ -1,13 +1,21 @@
-from config import GRADE_SCALE, MAX_MARK, PASS_MARK, SUBJECTS
+from config import GRADE_SCALE, MAX_MARK, PASS_MARK
 
 
 def calculate_total(marks):
     return sum(marks)
 
 
-def calculate_percentage(marks):
-    maximum_marks = len(SUBJECTS) * MAX_MARK
-    return calculate_total(marks) / maximum_marks * 100
+def calculate_percentage(marks, weights=None):
+    if len(marks) == 0:
+        return 0.0
+    if weights:
+        maximum = sum(MAX_MARK * weight for weight in weights)
+        if maximum == 0:
+            return 0.0
+        earned = sum(mark * weight for mark, weight in zip(marks, weights))
+        return earned / maximum * 100
+    maximum = len(marks) * MAX_MARK
+    return calculate_total(marks) / maximum * 100
 
 
 def get_result(marks):
@@ -24,5 +32,5 @@ def get_grade(percentage):
     return "F"
 
 
-def calculate(marks):
-    return calculate_total(marks), calculate_percentage(marks), get_result(marks)
+def calculate(marks, weights=None):
+    return calculate_total(marks), calculate_percentage(marks, weights), get_result(marks)

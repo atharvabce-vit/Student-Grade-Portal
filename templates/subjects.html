@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Subjects</h2>
+
+<form method="post" action="{{ url_for('add_subject_page') }}" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <fieldset>
+    <legend>Add a subject</legend>
+    <label>Subject name
+      <input type="text" name="name" required>
+    </label>
+  </fieldset>
+  <button type="submit">Add subject</button>
+</form>
+
+<h3>Current subjects</h3>
+{% if subjects %}
+<table>
+  <thead>
+    <tr>
+      <th>Subject</th>
+      <th>Weight</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for name, weight in subjects %}
+    <tr>
+      <td>{{ name }}</td>
+      <td>
+        <form method="post" action="{{ url_for('subject_weight_page') }}" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="name" value="{{ name }}">
+          <input type="number" name="weight" step="0.1" min="0.1" value="{{ weight }}" required>
+          <button type="submit">Save</button>
+        </form>
+      </td>
+      <td class="actions">
+        <form method="post" action="{{ url_for('remove_subject_page') }}"
+              onsubmit="return confirm('Remove this subject and its marks?');" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="name" value="{{ name }}">
+          <button type="submit" class="danger">Remove</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p class="hint">Weights are used when calculating percentages. Removing a subject also deletes its marks.</p>
+{% else %}
+<p>No subjects defined.</p>
+{% endif %}
+{% endblock %}

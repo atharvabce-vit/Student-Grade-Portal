@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Audit Log</h2>
+
+{% if entries %}
+<table>
+  <thead>
+    <tr>
+      <th>When</th>
+      <th>User</th>
+      <th>Action</th>
+      <th>Target</th>
+      <th>Details</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for created_at, username, action, target, details in entries %}
+    <tr>
+      <td>{{ created_at }}</td>
+      <td>{{ username if username else "-" }}</td>
+      <td>{{ action }}</td>
+      <td>{{ target if target else "-" }}</td>
+      <td>{{ details if details else "-" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No audit entries recorded yet.</p>
+{% endif %}
+{% endblock %}

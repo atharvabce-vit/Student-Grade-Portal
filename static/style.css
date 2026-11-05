@@ -617,6 +617,117 @@ select:focus {
   margin-top: 22px;
 }
 
+.theme-toggle {
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  background: rgba(34, 211, 238, 0.08);
+  border: 1px solid var(--border-strong);
+  cursor: pointer;
+  transition: background 0.18s ease, box-shadow 0.2s ease;
+}
+
+.theme-toggle:hover {
+  background: rgba(34, 211, 238, 0.2);
+  box-shadow: 0 0 22px rgba(34, 211, 238, 0.28);
+}
+
+.inline-form {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 4px 4px 0;
+}
+
+.inline-form button {
+  padding: 7px 12px;
+  border: none;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  background: rgba(34, 211, 238, 0.1);
+  border: 1px solid var(--border-strong);
+  cursor: pointer;
+  transition: background 0.18s ease, box-shadow 0.2s ease;
+}
+
+.inline-form button:hover {
+  background: rgba(34, 211, 238, 0.2);
+  box-shadow: 0 0 18px rgba(34, 211, 238, 0.25);
+}
+
+.inline-form button.danger {
+  color: #fff;
+  background: linear-gradient(135deg, #f43f5e, #b91c1c);
+  border: none;
+}
+
+.inline-form button.danger:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 8px 22px rgba(244, 63, 94, 0.4);
+}
+
+/* Light theme: the toggle stores the choice and swaps these variables. */
+[data-theme="light"] {
+  --bg: #f2f6fb;
+  --panel: rgba(255, 255, 255, 0.88);
+  --panel-solid: #ffffff;
+  --border: rgba(15, 23, 42, 0.14);
+  --border-strong: rgba(8, 145, 178, 0.45);
+  --text: #0f172a;
+  --muted: #56657a;
+  --accent: #0e7490;
+  --accent-2: #4f46e5;
+  --green: #047857;
+  --red: #be123c;
+}
+
+[data-theme="light"] body {
+  background:
+    radial-gradient(1100px 600px at 12% -12%, rgba(14, 116, 144, 0.1), transparent 58%),
+    radial-gradient(950px 520px at 92% -6%, rgba(79, 70, 229, 0.1), transparent 55%),
+    var(--bg);
+}
+
+[data-theme="light"] body::before {
+  background-image:
+    linear-gradient(rgba(15, 23, 42, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15, 23, 42, 0.05) 1px, transparent 1px);
+}
+
+[data-theme="light"] header {
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+}
+
+[data-theme="light"] nav a:hover,
+[data-theme="light"] .stat strong,
+[data-theme="light"] .report-head .who {
+  color: #0f172a;
+}
+
+[data-theme="light"] input,
+[data-theme="light"] select {
+  background: #ffffff;
+}
+
+[data-theme="light"] .card fieldset {
+  background: rgba(15, 23, 42, 0.03);
+}
+
+[data-theme="light"] .flash {
+  color: #06414f;
+}
+
+[data-theme="light"] ::-webkit-scrollbar-track {
+  background: #e7edf5;
+}
+
 @media (max-width: 640px) {
   header {
     padding: 14px 18px;
