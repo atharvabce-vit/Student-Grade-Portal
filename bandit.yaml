@@ -1,0 +1,11 @@
+# Bandit security scan configuration.
+# B105/B311/B608 are intentionally skipped:
+#   B105 - config defaults are placeholders, real values come from environment variables
+#   B311 - random is only used to generate registration numbers, not for security
+#   B608 - all SQL values are parameterised; only fixed, whitelisted fragments are concatenated
+exclude_dirs:
+  - tests
+skips:
+  - B105
+  - B311
+  - B608
