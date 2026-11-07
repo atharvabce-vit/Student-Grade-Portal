@@ -53,6 +53,26 @@
   <p>No term marks recorded for this student yet.</p>
   {% endif %}
 
+  {% if trend %}
+  <h3>Performance trend</h3>
+  <table class="no-print">
+    <thead>
+      <tr><th>Term</th><th>Percentage</th><th>Change</th></tr>
+    </thead>
+    <tbody>
+      {% for point in trend %}
+      <tr>
+        <td>{{ point.term }}</td>
+        <td>{{ "%.2f"|format(point.percentage) }}%</td>
+        <td class="{{ point.direction }}">
+          {% if point.change is none %}-{% else %}{{ "%+.2f"|format(point.change) }}{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
   <div class="report-actions no-print">
     {% if self_view %}
     <a class="button" href="{{ url_for('me_transcript_pdf_page') }}">Download PDF</a>
