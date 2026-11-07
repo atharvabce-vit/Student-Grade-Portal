@@ -48,6 +48,7 @@ from database import (
     attendance_for_student,
     attendance_summary,
     count_audit_log,
+    count_students,
     create_api_key,
     create_table,
     delete_api_key,
@@ -61,6 +62,7 @@ from database import (
     fetch_details_map,
     fetch_student,
     fetch_student_details,
+    fetch_students_page,
     find_api_key,
     insert_student,
     list_api_keys,
@@ -69,6 +71,7 @@ from database import (
     record_audit,
     remove_grade_rule,
     remove_subject,
+    replace_marks,
     restore_student,
     search_students,
     set_grade_rule,
@@ -333,6 +336,18 @@ def require_api_token(required_scope=None):
 
     touch_api_key(key["id"])
     return None
+
+
+def api_page():
+    raw = request.args.get("page", "1")
+    return int(raw) if raw.isdigit() and int(raw) > 0 else 1
+
+
+def api_page_size():
+    """Page size for the JSON API, capped so a client cannot request everything."""
+    raw = request.args.get("page_size", str(PAGE_SIZE))
+    size = int(raw) if raw.isdigit() and int(raw) > 0 else PAGE_SIZE
+    return min(size, 100)
 
 
 # --------------------------------------------------------------------------- #
@@ -1521,7 +1536,14 @@ def api_spec():
         },
         "paths": {
             "/api/students": {
-                "get": {"summary": "List students", "responses": {"200": {"description": "OK"}}},
+                "get": {
+                    "summary": "List students (paginated)",
+                    "parameters": [
+                        {"name": "page", "in": "query", "schema": {"type": "integer"}},
+                        {"name": "page_size", "in": "query", "schema": {"type": "integer"}},
+                    ],
+                    "responses": {"200": {"description": "OK"}},
+                },
                 "post": {
                     "summary": "Create a student",
                     "requestBody": {
@@ -1540,7 +1562,15 @@ def api_spec():
             },
             "/api/students/{reg_no}": {
                 "get": {"summary": "Fetch one student", "responses": {"200": {"description": "OK"}}},
+                "patch": {"summary": "Partially update a student", "responses": {"200": {"description": "OK"}}},
                 "delete": {"summary": "Delete one student", "responses": {"200": {"description": "OK"}}},
+            },
+            "/api/students/{reg_no}/marks": {
+                "get": {"summary": "Fetch subject marks", "responses": {"200": {"description": "OK"}}},
+                "put": {"summary": "Replace subject marks", "responses": {"200": {"description": "OK"}}},
+            },
+            "/healthz": {
+                "get": {"summary": "Liveness and database check", "responses": {"200": {"description": "OK"}}},
             },
         },
     }
@@ -1563,7 +1593,15 @@ def api_students():
         return error
 
     if request.method == "GET":
-        return jsonify({"students": build_rows(fetch_all_students())})
+        size = api_page_size()
+        page = api_page()
+        rows = fetch_students_page(size, (page - 1) * size)
+        return jsonify({
+            "students": build_rows(rows),
+            "page": page,
+            "page_size": size,
+            "total": count_students(),
+        })
 
     payload = request.get_json(silent=True) or {}
     name = str(payload.get("name", "")).strip()
@@ -1583,7 +1621,7 @@ def api_students():
     return jsonify({"reg_no": reg_no, "name": name, "marks": marks}), 201
 
 
-@app.route("/api/students/<reg_no>", methods=["GET", "DELETE"])
+@app.route("/api/students/<reg_no>", methods=["GET", "PATCH", "DELETE"])
 @csrf.exempt
 def api_student(reg_no):
     if not api_limiter.allow(client_ip(request)):
@@ -1602,7 +1640,81 @@ def api_student(reg_no):
         audit("api_delete_student", reg_no, username="api")
         return jsonify({"deleted": reg_no})
 
+    if request.method == "PATCH":
+        payload = request.get_json(silent=True) or {}
+        subjects = subject_names()
+        marks = payload.get("marks")
+
+        if "name" in payload and str(payload["name"]).strip() == "":
+            return jsonify({"error": "invalid_payload", "detail": "Name cannot be empty."}), 400
+        if marks is not None and (
+            not isinstance(marks, list)
+            or len(marks) != len(subjects)
+            or any(not isinstance(m, int) or m < 0 or m > MAX_MARK for m in marks)
+        ):
+            return jsonify({
+                "error": "invalid_marks",
+                "detail": f"Provide {len(subjects)} marks between 0 and {MAX_MARK}.",
+            }), 400
+
+        details = payload.get("details", {})
+        if details:
+            if not isinstance(details, dict):
+                return jsonify({"error": "invalid_payload", "detail": "details must be an object."}), 400
+            detail_errors = validate_details(details)
+            if detail_errors:
+                return jsonify({"error": "invalid_payload", "detail": detail_errors}), 400
+
+        current_marks = list(row[2:2 + len(subjects)])
+        if "name" in payload or marks is not None:
+            name = str(payload["name"]).strip() if "name" in payload else row[1]
+            update_student_record(reg_no, name, marks if marks is not None else current_marks)
+        if details:
+            update_student_details(reg_no, details)
+
+        audit("api_patch_student", reg_no, username="api")
+        return jsonify({
+            "student": build_rows([fetch_student(reg_no)])[0],
+            "details": fetch_student_details(reg_no),
+        })
+
     return jsonify({"student": build_rows([row])[0], "details": fetch_student_details(reg_no)})
+
+
+@app.route("/api/students/<reg_no>/marks", methods=["GET", "PUT"])
+@csrf.exempt
+def api_student_marks(reg_no):
+    if not api_limiter.allow(client_ip(request)):
+        return jsonify({"error": "rate_limited", "detail": "Too many requests."}), 429
+
+    error = require_api_token("read" if request.method == "GET" else "write")
+    if error:
+        return error
+
+    row = fetch_student(reg_no)
+    if row is None:
+        return jsonify({"error": "not_found"}), 404
+
+    subjects = subject_names()
+    if request.method == "GET":
+        marks = list(row[2:2 + len(subjects)])
+        return jsonify({"reg_no": reg_no, "marks": dict(zip(subjects, marks, strict=False))})
+
+    payload = request.get_json(silent=True) or {}
+    marks = payload.get("marks")
+    if (
+        not isinstance(marks, list)
+        or len(marks) != len(subjects)
+        or any(not isinstance(m, int) or m < 0 or m > MAX_MARK for m in marks)
+    ):
+        return jsonify({
+            "error": "invalid_marks",
+            "detail": f"Provide {len(subjects)} marks between 0 and {MAX_MARK}.",
+        }), 400
+
+    replace_marks(reg_no, marks)
+    audit("api_set_marks", reg_no, username="api")
+    return jsonify({"reg_no": reg_no, "marks": dict(zip(subjects, marks, strict=False))})
 
 
 # --------------------------------------------------------------------------- #
@@ -1611,6 +1723,22 @@ def api_student(reg_no):
 @app.route("/health")
 def health():
     return {"status": "ok", "env": ENV}
+
+
+@app.route("/healthz")
+def healthz():
+    """Liveness probe that also confirms the database is reachable."""
+    try:
+        count_students()
+        database_ok = True
+    except Exception:  # noqa: BLE001 - any failure means the service is unhealthy
+        logger.exception("Health check could not reach the database")
+        database_ok = False
+    return jsonify({
+        "status": "ok" if database_ok else "error",
+        "database": database_ok,
+        "env": ENV,
+    }), (200 if database_ok else 503)
 
 
 @app.errorhandler(404)
