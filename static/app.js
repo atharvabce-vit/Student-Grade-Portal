@@ -3,7 +3,7 @@
   var STORAGE_KEY = "sgp-theme";
 
   function currentTheme() {
-    return document.documentElement.getAttribute("data-theme") || "dark";
+    return document.documentElement.getAttribute("data-theme") || "light";
   }
 
   function applyTheme(theme) {
