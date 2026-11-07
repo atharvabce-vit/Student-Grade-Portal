@@ -132,6 +132,14 @@ SCHEMA_MIGRATIONS_TABLE = """
     )
 """
 
+GRADE_RULES_TABLE = """
+    CREATE TABLE IF NOT EXISTS grade_rules (
+        student_class TEXT PRIMARY KEY,
+        pass_mark     INTEGER NOT NULL,
+        grade_scale   TEXT NOT NULL
+    )
+"""
+
 
 def connect():
     connection = sqlite3.connect(DB_NAME)
@@ -234,6 +242,10 @@ def _migration_user_linked_reg(cursor):
     _add_missing_columns(cursor, "users", [("linked_reg_no", "TEXT NOT NULL DEFAULT ''")])
 
 
+def _migration_grade_rules(cursor):
+    cursor.execute(GRADE_RULES_TABLE)
+
+
 # Ordered schema migrations. Each entry runs at most once and is recorded in
 # the schema_migrations table, so new databases and existing ones converge.
 MIGRATIONS = [
@@ -243,6 +255,7 @@ MIGRATIONS = [
     (4, "user session version", _migration_session_version),
     (5, "audit request metadata", _migration_audit_metadata),
     (6, "user linked student", _migration_user_linked_reg),
+    (7, "per-class grade rules", _migration_grade_rules),
 ]
 
 
@@ -341,6 +354,37 @@ def set_subject_weight(name, weight):
     cursor.execute("UPDATE subjects SET weight = ? WHERE name = ?", (weight, name))
     connection.commit()
     connection.close()
+
+
+def set_grade_rule(student_class, pass_mark, grade_scale_json):
+    connection = connect()
+    cursor = connection.cursor()
+    cursor.execute(
+        "INSERT INTO grade_rules (student_class, pass_mark, grade_scale) VALUES (?, ?, ?) "
+        "ON CONFLICT(student_class) DO UPDATE SET pass_mark = ?, grade_scale = ?",
+        (student_class, pass_mark, grade_scale_json, pass_mark, grade_scale_json),
+    )
+    connection.commit()
+    connection.close()
+
+
+def remove_grade_rule(student_class):
+    connection = connect()
+    cursor = connection.cursor()
+    cursor.execute("DELETE FROM grade_rules WHERE student_class = ?", (student_class,))
+    connection.commit()
+    connection.close()
+
+
+def get_grade_rule_rows():
+    connection = connect()
+    cursor = connection.cursor()
+    cursor.execute(
+        "SELECT student_class, pass_mark, grade_scale FROM grade_rules ORDER BY student_class"
+    )
+    rows = cursor.fetchall()
+    connection.close()
+    return rows
 
 
 def generate_reg_no():
