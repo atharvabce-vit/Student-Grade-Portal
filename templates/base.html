@@ -25,6 +25,7 @@
     {% if role == 'student' %}
     <a href="{{ url_for('me_page') }}">My Report Card</a>
     {% else %}
+    <a href="{{ url_for('dashboard_page') }}">Dashboard</a>
     <a href="{{ url_for('index') }}">Students</a>
     <a href="{{ url_for('add_student_page') }}">Add Student</a>
     {% if can(role, 'marks') %}<a href="{{ url_for('marks_page') }}">Marks</a>{% endif %}
