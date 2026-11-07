@@ -60,13 +60,25 @@ It can be used two ways, from the same codebase and the same database:
 
 ## Screenshots
 
+| Login | Dashboard |
+|-------|-----------|
+| ![Login page](docs/screenshots/login.png) | ![Analytics dashboard](docs/screenshots/dashboard.png) |
+
 | Students | Report card |
 |----------|-------------|
 | ![Students list](docs/screenshots/students.png) | ![Report card](docs/screenshots/report.png) |
 
-| Statistics | Import |
-|------------|--------|
+| Statistics | Import students |
+|------------|-----------------|
 | ![Class statistics](docs/screenshots/stats.png) | ![Import page](docs/screenshots/import.png) |
+
+| Bulk edit | Import term marks |
+|-----------|-------------------|
+| ![Bulk edit page](docs/screenshots/bulk.png) | ![Import term marks page](docs/screenshots/term_import.png) |
+
+| At-risk students | Audit log |
+|------------------|-----------|
+| ![At-risk students](docs/screenshots/atrisk.png) | ![Audit log](docs/screenshots/audit.png) |
 
 ## Tech Stack
 
