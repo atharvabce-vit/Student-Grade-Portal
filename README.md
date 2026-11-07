@@ -3,7 +3,7 @@
 [![CI](https://github.com/atharvabce-vit/Student-Grade-Portal/actions/workflows/ci.yml/badge.svg)](https://github.com/atharvabce-vit/Student-Grade-Portal/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![Flask](https://img.shields.io/badge/Flask-3.1.3-black)](https://flask.palletsprojects.com/)
-[![Tests](https://img.shields.io/badge/tests-40%20passing-brightgreen)](#tests)
+[![Tests](https://img.shields.io/badge/tests-103%20passing-brightgreen)](#tests)
 [![Ruff](https://img.shields.io/badge/lint-ruff-261230)](#tests)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
@@ -22,6 +22,8 @@ It can be used two ways, from the same codebase and the same database:
 - View all students with pagination (10 per page), search by registration number / name,
   and filter by class, section and term
 - Update a student's marks or details
+- Bulk operations: select many students at once and apply shared profile details,
+  archive them, or restore them from the Archive in one step
 - Quick marks entry: pick a subject and fill in the marks for the whole class at once
 - Term-wise marks: enter marks per term and exam (Mid-Term / Final) in a class grid, then
   build a per-student transcript with a per-term breakdown and an overall grade
@@ -43,10 +45,13 @@ It can be used two ways, from the same codebase and the same database:
 - Import students from a document (CSV, TSV, Excel, PDF, Word or plain text). The
   names and subject marks are read out of the file automatically, each student gets a
   generated registration number, and duplicate rows are skipped and reported.
+- Import term-wise marks from a CSV of reg no, term, exam and subject columns, with a
+  downloadable template and a clear report of any skipped rows
 - Login with two roles: admin and faculty. Passwords are stored as PBKDF2 hashes in the
   database, with a temporary lockout after repeated failures.
 - User management (create accounts, change roles, reset passwords, enable/disable) and
-  an audit log of actions (both admin only)
+  an audit log of actions that can be filtered by action, user and date range and
+  exported to CSV (both admin only)
 - A token protected JSON API with revocable, scoped API keys (read / write), rate limiting
   and a live OpenAPI description
 - Security hardening: hashed passwords, per-user session invalidation on password change,
@@ -93,6 +98,7 @@ Student-Grade-Portal-Project/
 ├── importer.py      # Reads CSV, Excel, PDF, Word and text files
 ├── export.py        # CSV and Excel export
 ├── pdf_reports.py   # Batch PDF report cards and the transcript PDF
+├── backups.py       # Timestamped database + CSV backup snapshots
 ├── templates/       # HTML pages for the web app
 ├── static/          # CSS and JS for the web app
 ├── tests/           # Unit tests (unittest)
@@ -101,7 +107,10 @@ Student-Grade-Portal-Project/
 ├── docker-compose.yml         # One-command local deployment
 ├── .dockerignore
 ├── .env.example     # Sample environment configuration
-├── .github/workflows/ci.yml   # GitHub Actions lint and test workflow
+├── .github/workflows/ci.yml   # GitHub Actions lint, security scan and tests
+├── .github/dependabot.yml     # Automated dependency update pull requests
+├── .pre-commit-config.yaml    # Pre-commit hooks (ruff, whitespace, YAML checks)
+├── bandit.yaml      # Bandit security scan configuration
 ├── pyproject.toml   # Ruff and coverage configuration
 ├── requirements.txt
 ├── requirements-dev.txt       # Test and lint tooling
@@ -172,6 +181,17 @@ python main.py backup students-backup.db
 Pass a different path to write the copy somewhere else. The default is
 `students-backup.db` in the current directory.
 
+To take a timestamped snapshot pair (a database copy plus a CSV of all records) in one
+step, use the `report` command, which writes both files into a `backups/` folder:
+
+```
+python main.py report
+```
+
+Each run creates `backups/students-YYYYMMDD-HHMMSS.db` and
+`backups/students-YYYYMMDD-HHMMSS.csv`, so successive snapshots never overwrite each
+other.
+
 ## Configuration
 
 Settings live in `config.py` and every value can be overridden with an environment
@@ -206,15 +226,19 @@ pip install -r requirements-dev.txt
 python -m unittest discover -v
 ```
 
-Lint and coverage:
+Lint, security scan and coverage:
 
 ```
 ruff check .
+bandit -q -r . -c bandit.yaml
 coverage run -m unittest discover && coverage report -m
 ```
 
 The same checks run in CI on every push and pull request via
-`.github/workflows/ci.yml`.
+`.github/workflows/ci.yml`, which also enforces a minimum coverage level. Dependabot
+keeps the dependencies and actions up to date, and the `.pre-commit-config.yaml` hooks
+run ruff, end-of-file and whitespace fixes and YAML / merge-conflict checks before a
+commit is made.
 
 ## Grading
 
@@ -325,6 +349,12 @@ Working with Google Docs and Google Sheets:
   with marks earned, percentage and grade, a cumulative overall grade, and a PDF download.
 - Archive (admins): deleting a student moves them to the Archive instead of removing
   the row, so a record can be restored or purged permanently.
+- Bulk edit (admins and faculty): tick several students on the Bulk page and either
+  apply the same profile details (class, section, term, academic year, gender) to all
+  of them, archive them, or restore them from the Archive, in a single action.
+- Import term marks (admins and faculty): upload a CSV of reg no, term, exam and one
+  column per subject to load many term marks at once, using the downloadable template.
+  Rows for unknown students or with unreadable marks are skipped and reported.
 
 ## Exports
 
@@ -361,6 +391,8 @@ the token in production.
 
 - Every add, update, delete, import, login and admin action is written to an audit log,
   visible on the Audit page (admin only) and per student on the report card.
+- The Audit page can be filtered by action, user and date range, paginated, and the
+  filtered view exported to CSV for review or record keeping.
 - The Users page (admin only) lets an admin create accounts, change roles, reset
   passwords, and enable or disable accounts.
 - The API Keys page (admin only) issues and revokes scoped API keys for the JSON API.
