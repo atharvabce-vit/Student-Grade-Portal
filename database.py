@@ -230,6 +230,10 @@ def _migration_audit_metadata(cursor):
     ])
 
 
+def _migration_user_linked_reg(cursor):
+    _add_missing_columns(cursor, "users", [("linked_reg_no", "TEXT NOT NULL DEFAULT ''")])
+
+
 # Ordered schema migrations. Each entry runs at most once and is recorded in
 # the schema_migrations table, so new databases and existing ones converge.
 MIGRATIONS = [
@@ -238,6 +242,7 @@ MIGRATIONS = [
     (3, "auth and api keys", _migration_auth_tables),
     (4, "user session version", _migration_session_version),
     (5, "audit request metadata", _migration_audit_metadata),
+    (6, "user linked student", _migration_user_linked_reg),
 ]
 
 
