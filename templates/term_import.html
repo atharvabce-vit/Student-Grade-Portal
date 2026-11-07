@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Import Term Marks</h2>
+
+<form method="post" enctype="multipart/form-data" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label>Choose a file
+    <input type="file" name="file" accept=".csv,.tsv,.xlsx,.xlsm,.pdf,.docx,.txt" required>
+  </label>
+
+  <p class="hint">
+    The first row must be the column headers: a <strong>Reg No</strong> column, a
+    <strong>Term</strong> column, an <strong>Exam</strong> column and one column per
+    subject ({{ subjects|join(", ") }}). Marks are out of {{ max_mark }}.
+    Valid terms: {{ term_options|join(", ") }}. Valid exams: {{ exam_options|join(", ") }}.
+  </p>
+
+  <button type="submit">Upload and Import</button>
+  <a class="button" href="{{ url_for('term_marks_template_page') }}">Download CSV template</a>
+</form>
+{% endblock %}
