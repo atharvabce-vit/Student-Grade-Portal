@@ -34,6 +34,8 @@ from config import (
     MAX_MARK,
     PAGE_SIZE,
     PASS_MARK,
+    RISK_ATTENDANCE,
+    RISK_PERCENTAGE,
     SECRET_KEY,
     SESSION_COOKIE_SECURE,
     SESSION_LIFETIME_MINUTES,
@@ -85,9 +87,10 @@ from export import build_excel_bytes, export_to_csv
 from grading import calculate, get_grade
 from importer import import_students
 from logging_setup import configure_logging
-from mailer import MailNotConfigured, send_report_card
+from mailer import MailNotConfigured, send_alert, send_report_card
 from pdf_reports import build_report_cards_bytes, build_transcript_pdf
 from reports import class_statistics, filter_students, sort_students
+from risk import identify as identify_at_risk
 from rules import dump_scale, load_rules, parse_scale
 from rules import for_class as rules_for_class
 from security import RateLimiter, apply_security_headers, client_ip
@@ -226,6 +229,14 @@ def build_rows(students, rules=None):
             "term": info.get("term", ""),
         })
     return rows
+
+
+def attendance_rates():
+    """Return {reg_no: attendance percentage} across all recorded days."""
+    rates = {}
+    for reg_no, _name, present, total in attendance_summary():
+        rates[reg_no] = round(present / total * 100, 1) if total else None
+    return rates
 
 
 def read_marks(form):
@@ -641,6 +652,70 @@ def report_page(reg_no):
         role=current_role(),
         **subject_context(),
     )
+
+
+# --------------------------------------------------------------------------- #
+# at-risk students and guardian alerts
+# --------------------------------------------------------------------------- #
+@app.route("/at-risk")
+def at_risk_page():
+    guard = _guard("risk")
+    if guard:
+        return guard
+
+    rules = load_rules()
+    rows = build_rows(fetch_all_students(), rules)
+    flagged = identify_at_risk(rows, attendance_rates(), PASS_MARK)
+
+    return render_template(
+        "at_risk.html",
+        students=flagged,
+        risk_percentage=RISK_PERCENTAGE,
+        risk_attendance=RISK_ATTENDANCE,
+        role=current_role(),
+        **subject_context(),
+    )
+
+
+@app.route("/at-risk/notify/<reg_no>", methods=["POST"])
+def notify_guardian_page(reg_no):
+    guard = _guard("email")
+    if guard:
+        return guard
+
+    row = fetch_student(reg_no)
+    if row is None:
+        flash("Student not found.")
+        return redirect(url_for("at_risk_page"))
+
+    details = fetch_student_details(reg_no) or {}
+    recipient = details.get("email", "")
+    if not recipient:
+        flash("This student has no guardian email address on file.")
+        return redirect(url_for("at_risk_page"))
+
+    student = build_rows([row])[0]
+    rate = attendance_rates().get(reg_no)
+    html = (
+        f"<h2>Academic alert</h2><p><b>{student['name']}</b> ({student['reg_no']})</p>"
+        f"<p>Overall percentage: {student['percentage']:.2f}% &nbsp; Grade: {student['grade']}"
+        f" &nbsp; Result: {student['result']}</p>"
+        f"<p>Attendance: {rate if rate is not None else 'not recorded'}%</p>"
+        "<p>Please contact the school office to discuss extra support.</p>"
+    )
+    try:
+        send_alert(recipient, student["name"], html)
+    except MailNotConfigured as error:
+        flash(str(error))
+        return redirect(url_for("at_risk_page"))
+    except Exception as error:  # noqa: BLE001 - surface SMTP failures to the user
+        logger.exception("Failed to send guardian alert for %s", reg_no)
+        flash(f"Could not send the alert: {error}")
+        return redirect(url_for("at_risk_page"))
+
+    audit("guardian_alert", reg_no, recipient)
+    flash(f"Guardian alert sent to {recipient}.")
+    return redirect(url_for("at_risk_page"))
 
 
 # --------------------------------------------------------------------------- #
