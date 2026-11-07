@@ -1,11 +1,13 @@
 {% if page_count and page_count > 1 %}
+{% set query = request.args.to_dict() %}
+{% if 'page' in query %}{% set _ = query.pop('page') %}{% endif %}
 <nav class="pagination no-print" aria-label="Pagination">
   {% if page > 1 %}
-  <a class="button" href="{{ url_for(request.endpoint, page=page - 1, **(request.view_args or {})) }}">Previous</a>
+  <a class="button" href="{{ url_for(request.endpoint, page=page - 1, **query) }}">Previous</a>
   {% endif %}
   <span class="hint">Page {{ page }} of {{ page_count }}</span>
   {% if page < page_count %}
-  <a class="button" href="{{ url_for(request.endpoint, page=page + 1, **(request.view_args or {})) }}">Next</a>
+  <a class="button" href="{{ url_for(request.endpoint, page=page + 1, **query) }}">Next</a>
   {% endif %}
 </nav>
 {% endif %}
