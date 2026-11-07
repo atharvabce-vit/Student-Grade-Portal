@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Grade rules</h2>
+
+<p class="hint">
+  Override the pass mark and the letter-grade scale for a whole class. Classes without
+  their own rules use the default (pass mark {{ pass_mark }}, scale below).
+</p>
+
+<form method="post" action="{{ url_for('set_grade_rule_page') }}" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <fieldset>
+    <legend>Set rules for a class</legend>
+    <label>Class
+      <input type="text" name="student_class" list="known-classes" required>
+    </label>
+    <datalist id="known-classes">
+      {% for name in classes %}<option value="{{ name }}">{% endfor %}
+    </datalist>
+    <label>Pass mark (out of {{ max_mark }})
+      <input type="number" name="pass_mark" min="0" max="{{ max_mark }}" value="{{ pass_mark }}" required>
+    </label>
+    <label>Grade scale (one "minimum grade" per line, highest first)
+      <textarea name="grade_scale" rows="7" required>{{ default_scale }}</textarea>
+    </label>
+  </fieldset>
+  <button type="submit">Save rules</button>
+</form>
+
+<h3>Configured classes</h3>
+{% if rules %}
+<table>
+  <thead>
+    <tr><th>Class</th><th>Pass mark</th><th>Grade scale</th><th>Actions</th></tr>
+  </thead>
+  <tbody>
+    {% for student_class, pass_mark, scale in rules %}
+    <tr>
+      <td>{{ student_class }}</td>
+      <td>{{ pass_mark }}</td>
+      <td><pre class="scale">{{ scale }}</pre></td>
+      <td>
+        <form method="post" action="{{ url_for('remove_grade_rule_page') }}" class="inline-form"
+              onsubmit="return confirm('Remove the custom rules for this class?');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="student_class" value="{{ student_class }}">
+          <button type="submit" class="danger">Remove</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No class has custom rules yet.</p>
+{% endif %}
+{% endblock %}
