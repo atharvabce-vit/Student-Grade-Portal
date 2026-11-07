@@ -17,7 +17,11 @@
       <select name="role">
         <option value="faculty">faculty</option>
         <option value="admin">admin</option>
+        <option value="student">student</option>
       </select>
+    </label>
+    <label>Linked registration no (students only)
+      <input type="text" name="linked_reg_no" placeholder="e.g. SGP4821">
     </label>
   </fieldset>
   <button type="submit">Create user</button>
@@ -29,13 +33,14 @@
     <tr>
       <th>Username</th>
       <th>Role</th>
+      <th>Linked student</th>
       <th>Status</th>
       <th>Created</th>
       <th>Actions</th>
     </tr>
   </thead>
   <tbody>
-    {% for username, user_role, is_active, created_at in users %}
+    {% for username, user_role, is_active, created_at, linked_reg_no in users %}
     <tr>
       <td>{{ username }}{% if username == session.get('username') %} (you){% endif %}</td>
       <td>
@@ -44,10 +49,13 @@
           <select name="role">
             <option value="faculty" {% if user_role == 'faculty' %}selected{% endif %}>faculty</option>
             <option value="admin" {% if user_role == 'admin' %}selected{% endif %}>admin</option>
+            <option value="student" {% if user_role == 'student' %}selected{% endif %}>student</option>
           </select>
+          <input type="text" name="linked_reg_no" value="{{ linked_reg_no or '' }}" placeholder="reg no">
           <button type="submit">Save</button>
         </form>
       </td>
+      <td>{{ linked_reg_no or "-" }}</td>
       <td class="{{ 'pass' if is_active else 'fail' }}">{{ "active" if is_active else "disabled" }}</td>
       <td>{{ created_at }}</td>
       <td class="actions">
