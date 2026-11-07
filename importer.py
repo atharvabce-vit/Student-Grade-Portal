@@ -2,9 +2,12 @@ import csv
 import os
 import re
 
-from config import MAX_MARK, SUBJECTS
+from config import EXAMS, MAX_MARK, SUBJECTS, TERMS
 
 NAME_HEADERS = ["name", "student name", "student", "full name", "student_name"]
+REG_NO_HEADERS = ["reg no", "reg_no", "registration", "registration no", "roll no", "roll", "reg"]
+TERM_HEADERS = ["term", "semester"]
+EXAM_HEADERS = ["exam", "examination", "assessment"]
 
 SUBJECT_ALIASES = {
     "maths": ["maths", "math", "mathematics"],
@@ -241,3 +244,115 @@ def import_students(path):
 
     header, rows = read_file(path)
     return build_records(header, rows)
+
+
+def match_choice(value, choices):
+    """Return the canonical choice matching value (case-insensitive), else None."""
+    lowered = value.strip().lower()
+    for choice in choices:
+        if choice.lower() == lowered:
+            return choice
+    return None
+
+
+def find_term_columns(header):
+    reg_no_index = None
+    term_index = None
+    exam_index = None
+    subject_columns = {}
+
+    for index in range(len(header)):
+        title = clean(header[index]).lower()
+        if title == "":
+            continue
+
+        if reg_no_index is None and any(matches(title, alias) for alias in REG_NO_HEADERS):
+            reg_no_index = index
+            continue
+        if term_index is None and any(matches(title, alias) for alias in TERM_HEADERS):
+            term_index = index
+            continue
+        if exam_index is None and any(matches(title, alias) for alias in EXAM_HEADERS):
+            exam_index = index
+            continue
+
+        for subject in SUBJECTS:
+            if subject in subject_columns:
+                continue
+            aliases = SUBJECT_ALIASES.get(subject.lower(), [subject.lower()])
+            if any(matches(title, alias) for alias in aliases):
+                subject_columns[subject] = index
+                break
+
+    return reg_no_index, term_index, exam_index, subject_columns
+
+
+def build_term_records(header, rows):
+    reg_no_index, term_index, exam_index, subject_columns = find_term_columns(header)
+
+    if reg_no_index is None:
+        return [], ["Could not find a Reg No column. The first row must contain the column headers."]
+    if term_index is None:
+        return [], ["Could not find a Term column."]
+    if exam_index is None:
+        return [], ["Could not find an Exam column."]
+
+    missing = [subject for subject in SUBJECTS if subject not in subject_columns]
+    if missing:
+        return [], ["Missing a column for: " + ", ".join(missing)]
+
+    records = []
+    errors = []
+
+    for position in range(len(rows)):
+        row = rows[position]
+        row_number = position + 2
+        reg_no = clean(row[reg_no_index]) if reg_no_index < len(row) else ""
+        if reg_no == "":
+            continue
+
+        term = match_choice(clean(row[term_index]) if term_index < len(row) else "", TERMS)
+        exam = match_choice(clean(row[exam_index]) if exam_index < len(row) else "", EXAMS)
+
+        if term is None:
+            errors.append(f"Row {row_number}: term '{clean(row[term_index]) if term_index < len(row) else ''}' is not one of {', '.join(TERMS)}")
+            continue
+        if exam is None:
+            errors.append(f"Row {row_number}: exam '{clean(row[exam_index]) if exam_index < len(row) else ''}' is not one of {', '.join(EXAMS)}")
+            continue
+
+        for subject in SUBJECTS:
+            column = subject_columns[subject]
+            value = clean(row[column]) if column < len(row) else ""
+            if value == "":
+                errors.append(f"Row {row_number}: {subject} mark is missing for {reg_no}")
+                continue
+
+            try:
+                number = float(value)
+            except ValueError:
+                errors.append(f"Row {row_number}: {subject} mark '{value}' for {reg_no} is not a number")
+                continue
+
+            if number != int(number):
+                errors.append(f"Row {row_number}: {subject} mark '{value}' for {reg_no} must be a whole number")
+                continue
+
+            number = int(number)
+            if number < 0 or number > MAX_MARK:
+                errors.append(f"Row {row_number}: {subject} mark {number} for {reg_no} must be between 0 and {MAX_MARK}")
+                continue
+
+            records.append((reg_no, subject, term, exam, number))
+
+    return records, errors
+
+
+def import_term_marks(path):
+    if not os.path.isfile(path):
+        raise ValueError("File not found: " + path)
+    if os.path.getsize(path) == 0:
+        raise ValueError("The file is empty.")
+
+    header, rows = read_file(path)
+    return build_term_records(header, rows)
