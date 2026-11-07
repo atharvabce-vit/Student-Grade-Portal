@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>At-risk students</h2>
+
+<p class="hint">
+  Students are flagged when their overall percentage is below
+  {{ risk_percentage }}%, their attendance is below {{ risk_attendance }}%,
+  or they fail a subject.
+</p>
+
+{% if students %}
+<table>
+  <thead>
+    <tr>
+      <th>Reg no</th>
+      <th>Name</th>
+      <th>Class</th>
+      <th>Percentage</th>
+      <th>Attendance</th>
+      <th>Reasons</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for student in students %}
+    <tr>
+      <td>{{ student.reg_no }}</td>
+      <td>{{ student.name }}</td>
+      <td>{{ student.student_class or "-" }}</td>
+      <td>{{ "%.2f"|format(student.percentage) }}%</td>
+      <td>{{ "%.1f"|format(student.attendance_rate) ~ "%" if student.attendance_rate is not none else "-" }}</td>
+      <td>
+        <ul class="reasons">
+          {% for reason in student.reasons %}<li>{{ reason }}</li>{% endfor %}
+        </ul>
+      </td>
+      <td>
+        <a class="button" href="{{ url_for('report_page', reg_no=student.reg_no) }}">Report</a>
+        {% if can(role, 'email') %}
+        <form method="post" action="{{ url_for('notify_guardian_page', reg_no=student.reg_no) }}" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="button">Alert guardian</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No students are currently at risk. Everything looks healthy.</p>
+{% endif %}
+{% endblock %}
