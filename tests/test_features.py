@@ -197,6 +197,29 @@ class PortalFeatureTests(unittest.TestCase):
         user = users.find_user("admin")
         self.assertTrue(users.verify_password(user["password_hash"], "admin123"))
 
+    # ------------------------------------------------------------------ #
+    # per-class grade rules
+    # ------------------------------------------------------------------ #
+    def test_grade_rule_changes_result_for_that_class(self):
+        reg_no = database.insert_student("A", [40, 40, 40, 40, 40], {"student_class": "10A"})
+        response = self.client.post(
+            "/grade-rules/set",
+            data={"student_class": "10A", "pass_mark": "45", "grade_scale": "90 A+\n80 A"},
+        )
+        self.assertEqual(response.status_code, 302)
+        row = app_module.build_rows([database.fetch_student(reg_no)])[0]
+        self.assertEqual(row["result"], "FAIL")
+        self.assertEqual(self.client.get("/grade-rules").status_code, 200)
+
+    def test_bad_email_is_rejected(self):
+        before = len(database.fetch_all_students())
+        self.client.post(
+            "/add",
+            data={"name": "Bad Email", "email": "not-an-email",
+                  **{subject: "40" for subject in database.subject_names()}},
+        )
+        self.assertEqual(len(database.fetch_all_students()), before)
+
 
 if __name__ == "__main__":
     unittest.main()
