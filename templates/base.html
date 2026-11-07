@@ -22,6 +22,9 @@
   <h1>Student Grade Portal</h1>
   {% if role %}
   <nav>
+    {% if role == 'student' %}
+    <a href="{{ url_for('me_page') }}">My Report Card</a>
+    {% else %}
     <a href="{{ url_for('index') }}">Students</a>
     <a href="{{ url_for('add_student_page') }}">Add Student</a>
     {% if can(role, 'marks') %}<a href="{{ url_for('marks_page') }}">Marks</a>{% endif %}
@@ -36,6 +39,8 @@
     {% if can(role, 'users') %}<a href="{{ url_for('users_page') }}">Users</a>{% endif %}
     <a href="{{ url_for('api_docs_page') }}">API</a>
     {% if can(role, 'apikeys') %}<a href="{{ url_for('api_keys_page') }}">API Keys</a>{% endif %}
+    {% endif %}
+    <a href="{{ url_for('change_password_page') }}">Password</a>
     <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle light and dark theme">Theme</button>
     <span class="role">{{ role }}</span>
     <a href="{{ url_for('logout') }}">Logout</a>
