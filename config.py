@@ -121,6 +121,9 @@ PERMISSIONS = {
         "add", "view", "search", "update", "export", "stats",
         "report", "import", "marks", "attendance", "transcripts", "email",
     ],
+    "student": [
+        "self",
+    ],
 }
 
 # --------------------- default users (first run) --------------------
