@@ -44,6 +44,7 @@
     {% if can(role, 'apikeys') %}<a href="{{ url_for('api_keys_page') }}">API Keys</a>{% endif %}
     {% endif %}
     <a href="{{ url_for('change_password_page') }}">Password</a>
+    {% if role != 'student' %}<a href="{{ url_for('two_factor_page') }}">2FA</a>{% endif %}
     <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle light and dark theme">Theme</button>
     <span class="role">{{ role }}</span>
     <a href="{{ url_for('logout') }}">Logout</a>
