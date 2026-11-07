@@ -30,8 +30,8 @@ def find_user(username):
     connection = connect()
     cursor = connection.cursor()
     cursor.execute(
-        "SELECT username, password_hash, role, is_active, session_version, linked_reg_no "
-        "FROM users WHERE username = ?",
+        "SELECT username, password_hash, role, is_active, session_version, linked_reg_no, "
+        "totp_secret, totp_enabled FROM users WHERE username = ?",
         (username,),
     )
     row = cursor.fetchone()
@@ -45,6 +45,8 @@ def find_user(username):
         "is_active": bool(row[3]),
         "session_version": row[4],
         "linked_reg_no": row[5],
+        "totp_secret": row[6],
+        "totp_enabled": bool(row[7]),
     }
 
 
@@ -91,6 +93,18 @@ def set_linked_reg_no(username, reg_no):
     cursor.execute(
         "UPDATE users SET linked_reg_no = ? WHERE username = ?",
         (reg_no, username),
+    )
+    connection.commit()
+    connection.close()
+
+
+def set_totp(username, secret, enabled):
+    """Store the shared secret and whether two-factor login is switched on."""
+    connection = connect()
+    cursor = connection.cursor()
+    cursor.execute(
+        "UPDATE users SET totp_secret = ?, totp_enabled = ? WHERE username = ?",
+        (secret, 1 if enabled else 0, username),
     )
     connection.commit()
     connection.close()
