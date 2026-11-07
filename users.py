@@ -30,7 +30,7 @@ def find_user(username):
     connection = connect()
     cursor = connection.cursor()
     cursor.execute(
-        "SELECT username, password_hash, role, is_active, session_version "
+        "SELECT username, password_hash, role, is_active, session_version, linked_reg_no "
         "FROM users WHERE username = ?",
         (username,),
     )
@@ -44,6 +44,7 @@ def find_user(username):
         "role": row[2],
         "is_active": bool(row[3]),
         "session_version": row[4],
+        "linked_reg_no": row[5],
     }
 
 
@@ -55,7 +56,10 @@ def session_version(username):
 def list_users():
     connection = connect()
     cursor = connection.cursor()
-    cursor.execute("SELECT username, role, is_active, created_at FROM users ORDER BY username")
+    cursor.execute(
+        "SELECT username, role, is_active, created_at, linked_reg_no "
+        "FROM users ORDER BY username"
+    )
     rows = cursor.fetchall()
     connection.close()
     return rows
@@ -70,12 +74,23 @@ def count_users():
     return total
 
 
-def create_user(username, password, role):
+def create_user(username, password, role, linked_reg_no=""):
     connection = connect()
     cursor = connection.cursor()
     cursor.execute(
-        "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)",
-        (username, hash_password(password), role),
+        "INSERT INTO users (username, password_hash, role, linked_reg_no) VALUES (?, ?, ?, ?)",
+        (username, hash_password(password), role, linked_reg_no),
+    )
+    connection.commit()
+    connection.close()
+
+
+def set_linked_reg_no(username, reg_no):
+    connection = connect()
+    cursor = connection.cursor()
+    cursor.execute(
+        "UPDATE users SET linked_reg_no = ? WHERE username = ?",
+        (reg_no, username),
     )
     connection.commit()
     connection.close()
