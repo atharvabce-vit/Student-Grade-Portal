@@ -88,6 +88,12 @@ MAIL_SENDER = os.environ.get("SGP_MAIL_SENDER", "no-reply@student-grade-portal")
 # ---------------------------- attendance ----------------------------
 ATTENDANCE_STATUSES = ["present", "absent", "late"]
 
+# ------------------------------ at-risk -----------------------------
+# A student is flagged when their overall percentage or attendance dips
+# below these thresholds, or when they fail a subject.
+RISK_PERCENTAGE = _int("SGP_RISK_PERCENTAGE", 40)
+RISK_ATTENDANCE = _int("SGP_RISK_ATTENDANCE", 75)
+
 # ------------------------- terms and exams --------------------------
 # Used by the term-wise marks / transcript feature.
 TERMS = ["Term 1", "Term 2", "Term 3"]
@@ -116,10 +122,12 @@ PERMISSIONS = {
         "add", "view", "search", "update", "delete", "export", "stats",
         "report", "import", "marks", "attendance", "audit", "users",
         "subjects", "archive", "transcripts", "email", "apikeys", "graderules",
+        "risk",
     ],
     "faculty": [
         "add", "view", "search", "update", "export", "stats",
         "report", "import", "marks", "attendance", "transcripts", "email",
+        "risk",
     ],
     "student": [
         "self",
