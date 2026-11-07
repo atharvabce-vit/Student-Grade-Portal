@@ -32,6 +32,7 @@
     {% if can(role, 'attendance') %}<a href="{{ url_for('attendance_page') }}">Attendance</a>{% endif %}
     {% if can(role, 'import') %}<a href="{{ url_for('import_page') }}">Import</a>{% endif %}
     <a href="{{ url_for('stats_page') }}">Statistics</a>
+    {% if can(role, 'risk') %}<a href="{{ url_for('at_risk_page') }}">At Risk</a>{% endif %}
     {% if can(role, 'subjects') %}<a href="{{ url_for('subjects_page') }}">Subjects</a>{% endif %}
     {% if can(role, 'graderules') %}<a href="{{ url_for('grade_rules_page') }}">Grade Rules</a>{% endif %}
     {% if can(role, 'archive') %}<a href="{{ url_for('archive_page') }}">Archive</a>{% endif %}
