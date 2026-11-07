@@ -786,6 +786,20 @@ def term_marks_for_student(reg_no):
     return data
 
 
+def term_totals_by_term():
+    """Return {term: (earned, recorded)} across all active students."""
+    connection = connect()
+    cursor = connection.cursor()
+    cursor.execute(
+        "SELECT t.term, SUM(t.mark), COUNT(t.mark) FROM term_marks t "
+        "JOIN students s ON s.reg_no = t.reg_no "
+        "WHERE s.is_deleted = 0 GROUP BY t.term"
+    )
+    rows = cursor.fetchall()
+    connection.close()
+    return {term: (earned or 0, recorded or 0) for term, earned, recorded in rows}
+
+
 # --------------------------------------------------------------------------- #
 # login attempts (persistent lockout)
 # --------------------------------------------------------------------------- #
