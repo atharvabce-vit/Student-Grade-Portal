@@ -3,6 +3,20 @@
 {% block content %}
 <h2>Audit Log</h2>
 
+<form method="get" class="filters">
+  <select name="action">
+    <option value="">All actions</option>
+    {% for name in actions %}
+    <option value="{{ name }}" {% if action_filter == name %}selected{% endif %}>{{ name }}</option>
+    {% endfor %}
+  </select>
+  <input type="text" name="username" value="{{ username_filter }}" placeholder="User">
+  <label class="inline">From <input type="date" name="start" value="{{ start_filter }}"></label>
+  <label class="inline">To <input type="date" name="end" value="{{ end_filter }}"></label>
+  <button type="submit">Apply</button>
+  <a class="button" href="{{ url_for('audit_export_page', action=action_filter, username=username_filter, start=start_filter, end=end_filter) }}">Export CSV</a>
+</form>
+
 {% if entries %}
 <table>
   <thead>
@@ -30,6 +44,6 @@
 </table>
 {% include "_pagination.html" %}
 {% else %}
-<p>No audit entries recorded yet.</p>
+<p>No audit entries match the current filters.</p>
 {% endif %}
 {% endblock %}
