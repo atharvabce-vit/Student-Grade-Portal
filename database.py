@@ -483,6 +483,34 @@ def update_student_details(reg_no, details):
     connection.close()
 
 
+def bulk_update_details(reg_nos, details):
+    """Apply the same detail values (e.g. class, section) to many students."""
+    connection = connect()
+    cursor = connection.cursor()
+    for reg_no in reg_nos:
+        _update_details(cursor, reg_no, details)
+    connection.commit()
+    connection.close()
+
+
+def bulk_soft_delete(reg_nos):
+    """Move several students to the archive in a single transaction."""
+    connection = connect()
+    cursor = connection.cursor()
+    cursor.executemany("UPDATE students SET is_deleted = 1 WHERE reg_no = ?", [(r,) for r in reg_nos])
+    connection.commit()
+    connection.close()
+
+
+def bulk_restore(reg_nos):
+    """Restore several archived students in a single transaction."""
+    connection = connect()
+    cursor = connection.cursor()
+    cursor.executemany("UPDATE students SET is_deleted = 0 WHERE reg_no = ?", [(r,) for r in reg_nos])
+    connection.commit()
+    connection.close()
+
+
 def fetch_student_details(reg_no):
     connection = connect()
     cursor = connection.cursor()
