@@ -90,13 +90,16 @@ from transcripts import build_transcript, cumulative
 from users import (
     create_user,
     delete_user,
+    find_user,
     hash_token,
     list_users,
     seed_default_users,
     session_version,
     set_active,
+    set_linked_reg_no,
     set_password,
     set_role,
+    verify_password,
 )
 
 configure_logging()
@@ -135,6 +138,24 @@ def _validate_session():
     return None
 
 
+STUDENT_ALLOWED_ENDPOINTS = {
+    "static", "login_page", "logout", "me_page",
+    "me_transcript_page", "me_transcript_pdf", "change_password_page",
+}
+
+
+@app.before_request
+def _restrict_student_scope():
+    """Keep student accounts inside their own self-service pages."""
+    if session.get("role") != "student":
+        return None
+    if request.endpoint in STUDENT_ALLOWED_ENDPOINTS:
+        return None
+    if request.endpoint == "index":
+        return None
+    return redirect(url_for("me_page"))
+
+
 # --------------------------------------------------------------------------- #
 # helpers
 # --------------------------------------------------------------------------- #
@@ -144,6 +165,10 @@ def current_role():
 
 def current_username():
     return session.get("username", "")
+
+
+def current_reg_no():
+    return session.get("reg_no", "")
 
 
 def audit(action, target="", details="", username=None):
@@ -314,6 +339,7 @@ def login_page():
                 session.clear()
                 session["username"] = username
                 session["role"] = role
+                session["reg_no"] = (find_user(username) or {}).get("linked_reg_no", "")
                 session["sv"] = session_version(username)
                 session.permanent = True
                 audit("login", username=username)
@@ -331,6 +357,35 @@ def logout():
     return redirect(url_for("login_page"))
 
 
+@app.route("/password", methods=["GET", "POST"])
+def change_password_page():
+    if current_role() is None:
+        return redirect(url_for("login_page"))
+
+    if request.method == "POST":
+        current = request.form.get("current_password", "")
+        new = request.form.get("new_password", "")
+        confirm = request.form.get("confirm_password", "")
+
+        user = find_user(current_username())
+        if user is None or not verify_password(user["password_hash"], current):
+            flash("Your current password is incorrect.")
+        elif len(new) < 8:
+            flash("The new password must be at least 8 characters.")
+        elif new != confirm:
+            flash("The two new passwords do not match.")
+        elif verify_password(user["password_hash"], new):
+            flash("The new password must be different from the current one.")
+        else:
+            set_password(current_username(), new)
+            audit("change_password", current_username())
+            session["sv"] = session_version(current_username())
+            flash("Password updated.")
+            return redirect(url_for("index") if current_role() != "student" else url_for("me_page"))
+
+    return render_template("change_password.html", role=current_role())
+
+
 # --------------------------------------------------------------------------- #
 # students
 # --------------------------------------------------------------------------- #
@@ -338,6 +393,8 @@ def logout():
 def index():
     if current_role() is None:
         return redirect(url_for("login_page"))
+    if current_role() == "student":
+        return redirect(url_for("me_page"))
 
     sort_by = request.args.get("sort", "reg_no")
     result_filter = request.args.get("filter", "all")
@@ -564,6 +621,92 @@ def report_page(reg_no):
         attendance_rate=attendance_rate,
         role=current_role(),
         **subject_context(),
+    )
+
+
+# --------------------------------------------------------------------------- #
+# student self-service
+# --------------------------------------------------------------------------- #
+def _student_self_context():
+    reg_no = current_reg_no()
+    if reg_no == "":
+        return None, None
+    row = fetch_student(reg_no)
+    if row is None:
+        return None, None
+
+    attendance = attendance_for_student(reg_no)
+    present = sum(1 for _day, status in attendance if status == "present")
+    attendance_rate = round(present / len(attendance) * 100, 1) if attendance else None
+    return row, {
+        "student": build_rows([row])[0],
+        "details": fetch_student_details(reg_no) or {},
+        "attendance": attendance,
+        "attendance_rate": attendance_rate,
+    }
+
+
+@app.route("/me")
+def me_page():
+    if current_role() is None:
+        return redirect(url_for("login_page"))
+
+    row, context = _student_self_context()
+    if row is None:
+        flash("Your account is not linked to a student record yet. Please contact the office.")
+        return render_template("me.html", student=None, details={}, attendance=[], attendance_rate=None,
+                               role=current_role(), **subject_context())
+
+    return render_template("me.html", role=current_role(), **context, **subject_context())
+
+
+@app.route("/me/transcript")
+def me_transcript_page():
+    if current_role() is None:
+        return redirect(url_for("login_page"))
+
+    row, context = _student_self_context()
+    if row is None:
+        flash("Your account is not linked to a student record yet.")
+        return redirect(url_for("me_page"))
+
+    terms, overall = _transcript_parts(row[0])
+    return render_template(
+        "transcript.html",
+        student={"reg_no": row[0], "name": row[1]},
+        details=context["details"],
+        terms=terms,
+        overall=overall,
+        exams=EXAMS,
+        self_view=True,
+        role=current_role(),
+        **subject_context(),
+    )
+
+
+@app.route("/me/transcript.pdf")
+def me_transcript_pdf_page():
+    if current_role() is None:
+        return redirect(url_for("login_page"))
+
+    row, context = _student_self_context()
+    if row is None:
+        flash("Your account is not linked to a student record yet.")
+        return redirect(url_for("me_page"))
+
+    terms, overall = _transcript_parts(row[0])
+    payload = build_transcript_pdf(
+        {"reg_no": row[0], "name": row[1]},
+        context["details"],
+        terms,
+        overall,
+        EXAMS,
+        MAX_MARK,
+    )
+    return Response(
+        payload,
+        mimetype="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=transcript-{row[0]}.pdf"},
     )
 
 
@@ -980,14 +1123,17 @@ def add_user_page():
     username = request.form.get("username", "").strip()
     password = request.form.get("password", "")
     role = request.form.get("role", "faculty").strip()
+    linked_reg_no = request.form.get("linked_reg_no", "").strip()
 
     if username == "" or password == "":
         flash("Username and password are required.")
-    elif role not in ("admin", "faculty"):
+    elif role not in ("admin", "faculty", "student"):
         flash("Unknown role.")
+    elif role == "student" and (linked_reg_no == "" or fetch_student(linked_reg_no) is None):
+        flash("Pick an existing registration number to link the student account to.")
     else:
         try:
-            create_user(username, password, role)
+            create_user(username, password, role, linked_reg_no if role == "student" else "")
             audit("create_user", username, role)
             flash(f"User {username} created.")
         except Exception:
@@ -1003,8 +1149,12 @@ def change_user_role(username):
         return guard
 
     role = request.form.get("role", "").strip()
-    if role in ("admin", "faculty"):
+    if role in ("admin", "faculty", "student"):
         set_role(username, role)
+        if role == "student":
+            linked_reg_no = request.form.get("linked_reg_no", "").strip()
+            if linked_reg_no:
+                set_linked_reg_no(username, linked_reg_no)
         audit("set_role", username, role)
         flash(f"{username} is now {role}.")
     return redirect(url_for("users_page"))
