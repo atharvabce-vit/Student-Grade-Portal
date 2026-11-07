@@ -21,7 +21,8 @@
     <tr>
       <td>GET</td>
       <td>/api/students</td>
-      <td>List every student with marks, total, percentage, grade and result.</td>
+      <td>List every student with marks, total, percentage, grade and result. Supports
+        <code>?page=</code> and <code>?page_size=</code> (max 100).</td>
     </tr>
     <tr>
       <td>POST</td>
@@ -34,14 +35,35 @@
       <td>Fetch one student together with the extra profile fields.</td>
     </tr>
     <tr>
+      <td>PATCH</td>
+      <td>/api/students/&lt;reg_no&gt;</td>
+      <td>Partially update a student. Send any of <code>name</code>, <code>marks</code> or
+        <code>details</code>.</td>
+    </tr>
+    <tr>
       <td>DELETE</td>
       <td>/api/students/&lt;reg_no&gt;</td>
       <td>Permanently delete one student.</td>
     </tr>
     <tr>
       <td>GET</td>
+      <td>/api/students/&lt;reg_no&gt;/marks</td>
+      <td>Read the subject marks for one student as a map.</td>
+    </tr>
+    <tr>
+      <td>PUT</td>
+      <td>/api/students/&lt;reg_no&gt;/marks</td>
+      <td>Replace every subject mark: <code>{"marks": [...]}</code>.</td>
+    </tr>
+    <tr>
+      <td>GET</td>
       <td>/api/openapi.json</td>
       <td>Machine-readable OpenAPI description of the endpoints.</td>
+    </tr>
+    <tr>
+      <td>GET</td>
+      <td>/healthz</td>
+      <td>Liveness probe that also checks the database is reachable.</td>
     </tr>
   </tbody>
 </table>
