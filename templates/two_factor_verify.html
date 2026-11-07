@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Two-factor verification</h2>
+
+<p class="hint">Enter the 6-digit code from your authenticator app to finish signing in.</p>
+
+<form method="post" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label>Code
+    <input type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autofocus>
+  </label>
+  <button type="submit">Verify</button>
+</form>
+
+<p><a href="{{ url_for('login_page') }}">Back to login</a></p>
+{% endblock %}
