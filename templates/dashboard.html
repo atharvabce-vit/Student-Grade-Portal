@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Dashboard</h2>
+
+<div class="cards">
+  <div class="stat"><span>Students</span><strong>{{ total_students }}</strong></div>
+  <div class="stat"><span>Average</span><strong>{{ "%.2f"|format(average) }}%</strong></div>
+  <div class="stat"><span>Pass rate</span><strong>{{ pass_rate }}%</strong></div>
+  <div class="stat"><span>At risk</span><strong>{{ at_risk_count }}</strong></div>
+</div>
+
+<h3>Grade distribution</h3>
+<div class="chart">
+  {% for grade, count in distribution %}
+  <div class="bar-row">
+    <span class="bar-label">{{ grade }}</span>
+    <span class="bar-track">
+      <span class="bar-fill" style="width: {{ (count / max_count * 100)|round(0) }}%"></span>
+    </span>
+    <span class="bar-value">{{ count }}</span>
+  </div>
+  {% endfor %}
+</div>
+
+<h3>Cohort performance trend</h3>
+{% if trend %}
+<table>
+  <thead>
+    <tr><th>Term</th><th>Average</th><th>Change</th></tr>
+  </thead>
+  <tbody>
+    {% for point in trend %}
+    <tr>
+      <td>{{ point.term }}</td>
+      <td>{{ "%.2f"|format(point.percentage) }}%</td>
+      <td class="{{ point.direction }}">
+        {% if point.change is none %}-{% else %}{{ "%+.2f"|format(point.change) }}{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="hint">No term marks recorded yet, so there is no trend to show.</p>
+{% endif %}
+
+{% if at_risk %}
+<h3>Students needing attention</h3>
+<table>
+  <thead>
+    <tr><th>Reg no</th><th>Name</th><th>Percentage</th><th>Reasons</th></tr>
+  </thead>
+  <tbody>
+    {% for student in at_risk %}
+    <tr>
+      <td>{{ student.reg_no }}</td>
+      <td>{{ student.name }}</td>
+      <td>{{ "%.2f"|format(student.percentage) }}%</td>
+      <td>{{ student.reasons|join("; ") }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p><a class="button" href="{{ url_for('at_risk_page') }}">View all at-risk students</a></p>
+{% endif %}
+{% endblock %}
