@@ -54,9 +54,14 @@
   {% endif %}
 
   <div class="report-actions no-print">
+    {% if self_view %}
+    <a class="button" href="{{ url_for('me_transcript_pdf_page') }}">Download PDF</a>
+    <a class="button" href="{{ url_for('me_page') }}">Back to my report card</a>
+    {% else %}
     <a class="button" href="{{ url_for('transcript_pdf_page', reg_no=student.reg_no) }}">Download PDF</a>
     <a class="button" href="{{ url_for('report_page', reg_no=student.reg_no) }}">Report card</a>
     <a class="button" href="{{ url_for('index') }}">Back to students</a>
+    {% endif %}
   </div>
 </div>
 {% endblock %}
