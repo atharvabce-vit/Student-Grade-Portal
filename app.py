@@ -1,5 +1,7 @@
+import csv
 import datetime
 import hmac
+import io
 import logging
 import os
 import secrets
@@ -48,6 +50,7 @@ from database import (
     add_subject,
     attendance_for_student,
     attendance_summary,
+    audit_actions,
     bulk_restore,
     bulk_soft_delete,
     bulk_update_details,
@@ -1531,21 +1534,69 @@ def export_pdf_page():
 # --------------------------------------------------------------------------- #
 # audit and users
 # --------------------------------------------------------------------------- #
+def _audit_end_bound(end):
+    """Turn an inclusive end date into an exclusive upper bound."""
+    if not end:
+        return ""
+    try:
+        day = datetime.datetime.strptime(end, "%Y-%m-%d").date()
+    except ValueError:
+        return end
+    return (day + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+
+
+def _audit_filter_args():
+    return (
+        request.args.get("action", "").strip(),
+        request.args.get("username", "").strip(),
+        request.args.get("start", "").strip(),
+        _audit_end_bound(request.args.get("end", "").strip()),
+    )
+
+
 @app.route("/audit")
 def audit_page():
     guard = _guard("audit")
     if guard:
         return guard
 
-    total = count_audit_log()
+    action, username, start, end = _audit_filter_args()
+    total = count_audit_log(action, username, start, end)
     page, page_count, offset = pagination(total)
     return render_template(
         "audit.html",
-        entries=fetch_audit_log_detailed(PAGE_SIZE, offset),
+        entries=fetch_audit_log_detailed(PAGE_SIZE, offset, action, username, start, end),
+        actions=audit_actions(),
+        action_filter=action,
+        username_filter=username,
+        start_filter=request.args.get("start", "").strip(),
+        end_filter=request.args.get("end", "").strip(),
         page=page,
         page_count=page_count,
         total=total,
         role=current_role(),
+    )
+
+
+@app.route("/audit/export")
+def audit_export_page():
+    guard = _guard("audit")
+    if guard:
+        return guard
+
+    action, username, start, end = _audit_filter_args()
+    limit = max(count_audit_log(action, username, start, end), 1)
+    rows = fetch_audit_log_detailed(limit, 0, action, username, start, end)
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["Time", "User", "Action", "Target", "Details", "IP"])
+    writer.writerows(rows)
+
+    return Response(
+        buffer.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=audit_log.csv"},
     )
 
 
