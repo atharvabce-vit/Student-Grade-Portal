@@ -33,6 +33,16 @@ class GradingTests(unittest.TestCase):
         self.assertEqual(get_grade(40), "D")
         self.assertEqual(get_grade(39.9), "F")
 
+    def test_custom_pass_mark(self):
+        self.assertEqual(get_result([30, 30, 30, 30, 30], pass_mark=35), "FAIL")
+        self.assertEqual(get_result([40, 40, 40, 40, 40], pass_mark=35), "PASS")
+
+    def test_custom_grade_scale(self):
+        scale = [(70, "Distinction"), (50, "Merit")]
+        self.assertEqual(get_grade(75, scale), "Distinction")
+        self.assertEqual(get_grade(55, scale), "Merit")
+        self.assertEqual(get_grade(45, scale), "F")
+
 
 if __name__ == "__main__":
     unittest.main()
