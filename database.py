@@ -703,27 +703,60 @@ def fetch_audit_log(limit=100, target=None):
     return rows
 
 
-def fetch_audit_log_detailed(limit=50, offset=0):
+def _audit_filters(action="", username="", start="", end=""):
+    """Build a WHERE clause and parameters for audit log filters."""
+    clauses = []
+    params = []
+    if action:
+        clauses.append("action = ?")
+        params.append(action)
+    if username:
+        clauses.append("username = ?")
+        params.append(username)
+    if start:
+        clauses.append("created_at >= ?")
+        params.append(start)
+    if end:
+        clauses.append("created_at < ?")
+        params.append(end)
+    where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+    return where, params
+
+
+def fetch_audit_log_detailed(limit=50, offset=0, action="", username="", start="", end=""):
     """Audit rows including the client IP, newest first, for the audit page."""
+    where, params = _audit_filters(action, username, start, end)
     connection = connect()
     cursor = connection.cursor()
     cursor.execute(
-        "SELECT created_at, username, action, target, details, ip FROM audit_log "
-        "ORDER BY id DESC LIMIT ? OFFSET ?",
-        (limit, offset),
+        "SELECT created_at, username, action, target, details, ip FROM audit_log"
+        + where
+        + " ORDER BY id DESC LIMIT ? OFFSET ?",
+        params + [limit, offset],
     )
     rows = cursor.fetchall()
     connection.close()
     return rows
 
 
-def count_audit_log():
+def count_audit_log(action="", username="", start="", end=""):
+    where, params = _audit_filters(action, username, start, end)
     connection = connect()
     cursor = connection.cursor()
-    cursor.execute("SELECT COUNT(*) FROM audit_log")
+    cursor.execute("SELECT COUNT(*) FROM audit_log" + where, params)
     total = cursor.fetchone()[0]
     connection.close()
     return total
+
+
+def audit_actions():
+    """Return the distinct audit actions, for filter dropdowns."""
+    connection = connect()
+    cursor = connection.cursor()
+    cursor.execute("SELECT DISTINCT action FROM audit_log ORDER BY action")
+    actions = [row[0] for row in cursor.fetchall()]
+    connection.close()
+    return actions
 
 
 def marks_for_subject(subject):
