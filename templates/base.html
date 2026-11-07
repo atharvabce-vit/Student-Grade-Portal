@@ -28,10 +28,12 @@
     <a href="{{ url_for('dashboard_page') }}">Dashboard</a>
     <a href="{{ url_for('index') }}">Students</a>
     <a href="{{ url_for('add_student_page') }}">Add Student</a>
+    {% if can(role, 'update') %}<a href="{{ url_for('bulk_page') }}">Bulk Edit</a>{% endif %}
     {% if can(role, 'marks') %}<a href="{{ url_for('marks_page') }}">Marks</a>{% endif %}
     {% if can(role, 'marks') %}<a href="{{ url_for('term_marks_page') }}">Term Marks</a>{% endif %}
     {% if can(role, 'attendance') %}<a href="{{ url_for('attendance_page') }}">Attendance</a>{% endif %}
     {% if can(role, 'import') %}<a href="{{ url_for('import_page') }}">Import</a>{% endif %}
+    {% if can(role, 'import') %}<a href="{{ url_for('term_marks_import_page') }}">Import Term Marks</a>{% endif %}
     <a href="{{ url_for('stats_page') }}">Statistics</a>
     {% if can(role, 'risk') %}<a href="{{ url_for('at_risk_page') }}">At Risk</a>{% endif %}
     {% if can(role, 'subjects') %}<a href="{{ url_for('subjects_page') }}">Subjects</a>{% endif %}
