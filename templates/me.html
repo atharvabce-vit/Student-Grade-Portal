@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="report">
+  <h2>My Report Card</h2>
+
+  {% if not student %}
+  <p>Your account is not linked to a student record yet. Please contact the office.</p>
+  {% else %}
+  <div class="report-head">
+    <span class="who">{{ student.name }}</span>
+    <span class="reg">{{ student.reg_no }}</span>
+    <span class="result-badge {{ student.result|lower }}">{{ student.result }}</span>
+  </div>
+
+  <div class="cards">
+    <div class="stat"><span>Total</span><strong>{{ student.total }}</strong></div>
+    <div class="stat"><span>Percentage</span><strong>{{ "%.2f"|format(student.percentage) }}%</strong></div>
+    <div class="stat"><span>Grade</span><strong>{{ student.grade }}</strong></div>
+    <div class="stat"><span>Result</span><strong>{{ student.result }}</strong></div>
+    {% if attendance_rate is not none %}
+    <div class="stat"><span>Attendance</span><strong>{{ "%.1f"|format(attendance_rate) }}%</strong></div>
+    {% endif %}
+  </div>
+
+  <h3>Subject marks</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Subject</th>
+        <th>Marks</th>
+        <th>Out of</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for subject in subjects %}
+      {% set mark = student.marks[loop.index0] %}
+      <tr>
+        <td>{{ subject }}</td>
+        <td>{{ mark }}</td>
+        <td>{{ max_mark }}</td>
+        <td class="{{ 'pass' if mark >= pass_mark else 'fail' }}">
+          {{ "Pass" if mark >= pass_mark else "Fail" }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h3>My details</h3>
+  <table>
+    <tbody>
+      <tr><th>Class</th><td>{{ details.get('student_class') or "-" }}</td></tr>
+      <tr><th>Section</th><td>{{ details.get('section') or "-" }}</td></tr>
+      <tr><th>Academic year</th><td>{{ details.get('academic_year') or "-" }}</td></tr>
+      <tr><th>Term</th><td>{{ details.get('term') or "-" }}</td></tr>
+      <tr><th>Guardian</th><td>{{ details.get('guardian') or "-" }}</td></tr>
+      <tr><th>Email</th><td>{{ details.get('email') or "-" }}</td></tr>
+    </tbody>
+  </table>
+
+  <div class="report-actions no-print">
+    <button type="button" class="button" onclick="window.print()">Print / Save as PDF</button>
+    <a class="button" href="{{ url_for('me_transcript_page') }}">My transcript</a>
+    <a class="button" href="{{ url_for('change_password_page') }}">Change password</a>
+  </div>
+
+  {% if attendance %}
+  <h3 class="no-print">Recent attendance</h3>
+  <table class="no-print">
+    <thead>
+      <tr><th>Day</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+      {% for day, status in attendance %}
+      <tr>
+        <td>{{ day }}</td>
+        <td class="{{ 'pass' if status == 'present' else ('fail' if status == 'absent' else '') }}">{{ status|capitalize }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+  {% endif %}
+</div>
+{% endblock %}
