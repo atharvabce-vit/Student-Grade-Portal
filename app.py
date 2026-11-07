@@ -20,6 +20,7 @@ from flask import (
 )
 from flask_wtf import CSRFProtect
 
+from analytics import cohort_average, grade_distribution, term_trend
 from auth import can, lockout_remaining, login
 from config import (
     API_RATE_LIMIT,
@@ -79,6 +80,7 @@ from database import (
     subject_weights,
     term_marks_for_student,
     term_marks_grid,
+    term_totals_by_term,
     touch_api_key,
     update_student_details,
     update_student_record,
@@ -363,7 +365,7 @@ def login_page():
                 session["sv"] = session_version(username)
                 session.permanent = True
                 audit("login", username=username)
-                return redirect(url_for("index"))
+                return redirect(url_for("dashboard_page"))
 
     return render_template("login.html", role=current_role())
 
@@ -596,6 +598,52 @@ def purge_student_page(reg_no):
 
 
 # --------------------------------------------------------------------------- #
+# dashboard
+# --------------------------------------------------------------------------- #
+def cohort_trend_points():
+    """Average percentage per term across the whole cohort."""
+    points = []
+    for term, (earned, recorded) in sorted(term_totals_by_term().items()):
+        maximum = recorded * MAX_MARK
+        points.append({
+            "term": term,
+            "percentage": round(earned / maximum * 100, 2) if maximum else 0.0,
+        })
+    return points
+
+
+@app.route("/dashboard")
+def dashboard_page():
+    if current_role() is None:
+        return redirect(url_for("login_page"))
+    if current_role() == "student":
+        return redirect(url_for("me_page"))
+
+    rules = load_rules()
+    students = fetch_all_students()
+    rows = build_rows(students, rules)
+    summary = class_statistics(students, subject_weights())
+    flagged = identify_at_risk(rows, attendance_rates(), PASS_MARK)
+
+    distribution = grade_distribution(rows)
+    max_count = max([count for _grade, count in distribution] + [1])
+
+    return render_template(
+        "dashboard.html",
+        total_students=len(rows),
+        average=cohort_average(rows),
+        pass_rate=round(summary["pass_percentage"], 1),
+        at_risk_count=len(flagged),
+        at_risk=flagged[:5],
+        distribution=distribution,
+        max_count=max_count,
+        trend=term_trend(cohort_trend_points()),
+        role=current_role(),
+        **subject_context(),
+    )
+
+
+# --------------------------------------------------------------------------- #
 # reporting and stats
 # --------------------------------------------------------------------------- #
 @app.route("/stats")
@@ -649,6 +697,7 @@ def report_page(reg_no):
         history=fetch_audit_log(50, target=reg_no),
         attendance=attendance,
         attendance_rate=attendance_rate,
+        trend=term_trend(_transcript_parts(reg_no)[0]),
         role=current_role(),
         **subject_context(),
     )
@@ -771,6 +820,7 @@ def me_transcript_page():
         details=context["details"],
         terms=terms,
         overall=overall,
+        trend=term_trend(terms),
         exams=EXAMS,
         self_view=True,
         role=current_role(),
@@ -923,6 +973,7 @@ def transcript_page(reg_no):
         details=fetch_student_details(reg_no) or {},
         terms=terms,
         overall=overall,
+        trend=term_trend(terms),
         exams=EXAMS,
         role=current_role(),
         **subject_context(),
