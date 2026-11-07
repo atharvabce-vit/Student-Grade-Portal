@@ -18,19 +18,25 @@ def calculate_percentage(marks, weights=None):
     return calculate_total(marks) / maximum * 100
 
 
-def get_result(marks):
+def get_result(marks, pass_mark=None):
+    threshold = PASS_MARK if pass_mark is None else pass_mark
     for mark in marks:
-        if mark < PASS_MARK:
+        if mark < threshold:
             return "FAIL"
     return "PASS"
 
 
-def get_grade(percentage):
-    for minimum, grade in GRADE_SCALE:
+def get_grade(percentage, grade_scale=None):
+    scale = grade_scale if grade_scale else GRADE_SCALE
+    for minimum, grade in scale:
         if percentage >= minimum:
             return grade
     return "F"
 
 
-def calculate(marks, weights=None):
-    return calculate_total(marks), calculate_percentage(marks, weights), get_result(marks)
+def calculate(marks, weights=None, pass_mark=None, grade_scale=None):
+    return (
+        calculate_total(marks),
+        calculate_percentage(marks, weights),
+        get_result(marks, pass_mark),
+    )
