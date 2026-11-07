@@ -519,6 +519,39 @@ def fetch_all_students():
     return rows
 
 
+def count_students():
+    connection = connect()
+    cursor = connection.cursor()
+    cursor.execute("SELECT COUNT(*) FROM students WHERE is_deleted = 0")
+    total = cursor.fetchone()[0]
+    connection.close()
+    return total
+
+
+def fetch_students_page(limit, offset):
+    connection = connect()
+    cursor = connection.cursor()
+    cursor.execute(
+        "SELECT reg_no, name FROM students WHERE is_deleted = 0 "
+        "ORDER BY reg_no LIMIT ? OFFSET ?",
+        (limit, offset),
+    )
+    students = cursor.fetchall()
+    rows = _attach_marks(cursor, students)
+    connection.close()
+    return rows
+
+
+def replace_marks(reg_no, marks):
+    """Replace every subject mark for one student."""
+    connection = connect()
+    cursor = connection.cursor()
+    cursor.execute("DELETE FROM marks WHERE reg_no = ?", (reg_no,))
+    _write_marks(cursor, reg_no, marks)
+    connection.commit()
+    connection.close()
+
+
 def fetch_deleted_students():
     connection = connect()
     cursor = connection.cursor()
