@@ -20,6 +20,26 @@
     {% endif %}
   </div>
 
+  {% if trend %}
+  <h3>Performance trend</h3>
+  <table>
+    <thead>
+      <tr><th>Term</th><th>Percentage</th><th>Change</th></tr>
+    </thead>
+    <tbody>
+      {% for point in trend %}
+      <tr>
+        <td>{{ point.term }}</td>
+        <td>{{ "%.2f"|format(point.percentage) }}%</td>
+        <td class="{{ point.direction }}">
+          {% if point.change is none %}-{% else %}{{ "%+.2f"|format(point.change) }}{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
   <h3>Subject marks</h3>
   <table>
     <thead>
