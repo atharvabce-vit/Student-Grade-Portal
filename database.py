@@ -246,6 +246,13 @@ def _migration_grade_rules(cursor):
     cursor.execute(GRADE_RULES_TABLE)
 
 
+def _migration_user_totp(cursor):
+    _add_missing_columns(cursor, "users", [
+        ("totp_secret", "TEXT NOT NULL DEFAULT ''"),
+        ("totp_enabled", "INTEGER NOT NULL DEFAULT 0"),
+    ])
+
+
 # Ordered schema migrations. Each entry runs at most once and is recorded in
 # the schema_migrations table, so new databases and existing ones converge.
 MIGRATIONS = [
@@ -256,6 +263,7 @@ MIGRATIONS = [
     (5, "audit request metadata", _migration_audit_metadata),
     (6, "user linked student", _migration_user_linked_reg),
     (7, "per-class grade rules", _migration_grade_rules),
+    (8, "user two-factor", _migration_user_totp),
 ]
 
 
