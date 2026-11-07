@@ -115,7 +115,7 @@ PERMISSIONS = {
     "admin": [
         "add", "view", "search", "update", "delete", "export", "stats",
         "report", "import", "marks", "attendance", "audit", "users",
-        "subjects", "archive", "transcripts", "email", "apikeys",
+        "subjects", "archive", "transcripts", "email", "apikeys", "graderules",
     ],
     "faculty": [
         "add", "view", "search", "update", "export", "stats",
