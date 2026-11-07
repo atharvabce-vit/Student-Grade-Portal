@@ -20,6 +20,7 @@ from flask import (
 )
 from flask_wtf import CSRFProtect
 
+import totp
 from analytics import cohort_average, grade_distribution, term_trend
 from auth import can, lockout_remaining, login
 from config import (
@@ -112,6 +113,7 @@ from users import (
     set_linked_reg_no,
     set_password,
     set_role,
+    set_totp,
     verify_password,
 )
 from validators import validate_details
@@ -373,16 +375,86 @@ def login_page():
                 flash("Invalid username or password.")
                 audit("login_failed", username=username)
             else:
-                session.clear()
-                session["username"] = username
-                session["role"] = role
-                session["reg_no"] = (find_user(username) or {}).get("linked_reg_no", "")
-                session["sv"] = session_version(username)
-                session.permanent = True
+                user = find_user(username) or {}
+                if user.get("totp_enabled"):
+                    session.clear()
+                    session["pending_2fa"] = username
+                    session.permanent = True
+                    return redirect(url_for("two_factor_verify_page"))
+                _start_session(username, role, user.get("linked_reg_no", ""))
                 audit("login", username=username)
                 return redirect(url_for("dashboard_page"))
 
     return render_template("login.html", role=current_role())
+
+
+def _start_session(username, role, reg_no):
+    """Establish a fully authenticated session for a user."""
+    session.clear()
+    session["username"] = username
+    session["role"] = role
+    session["reg_no"] = reg_no
+    session["sv"] = session_version(username)
+    session.permanent = True
+
+
+@app.route("/2fa/verify", methods=["GET", "POST"])
+def two_factor_verify_page():
+    username = session.get("pending_2fa")
+    if not username:
+        return redirect(url_for("login_page"))
+
+    if request.method == "POST":
+        code = request.form.get("code", "").strip()
+        user = find_user(username) or {}
+        if totp.verify(user.get("totp_secret", ""), code):
+            _start_session(username, user.get("role", ""), user.get("linked_reg_no", ""))
+            audit("login_2fa", username=username)
+            return redirect(url_for("dashboard_page"))
+        flash("That code is not valid. Try again.")
+        audit("login_2fa_failed", username=username)
+
+    return render_template("two_factor_verify.html", role=None)
+
+
+@app.route("/2fa", methods=["GET", "POST"])
+def two_factor_page():
+    if current_role() is None:
+        return redirect(url_for("login_page"))
+
+    username = current_username()
+    user = find_user(username) or {}
+    secret = user.get("totp_secret", "")
+
+    if request.method == "POST":
+        if request.form.get("action") == "disable":
+            set_totp(username, "", False)
+            audit("disable_2fa", username)
+            flash("Two-factor login disabled.")
+            return redirect(url_for("two_factor_page"))
+
+        if not secret:
+            secret = totp.generate_secret()
+            set_totp(username, secret, False)
+        if totp.verify(secret, request.form.get("code", "").strip()):
+            set_totp(username, secret, True)
+            audit("enable_2fa", username)
+            flash("Two-factor login enabled.")
+        else:
+            flash("That code is not valid. Check your authenticator app and try again.")
+        return redirect(url_for("two_factor_page"))
+
+    if not secret:
+        secret = totp.generate_secret()
+        set_totp(username, secret, False)
+
+    return render_template(
+        "two_factor.html",
+        secret=secret,
+        uri=totp.provisioning_uri(secret, username),
+        enabled=user.get("totp_enabled", False),
+        role=current_role(),
+    )
 
 
 @app.route("/logout")
