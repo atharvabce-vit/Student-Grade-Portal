@@ -1,6 +1,7 @@
 import sys
 
 from auth import can, login
+from backups import run_backup
 from database import backup_to, create_table
 from export import export_to_csv
 from students import (
@@ -87,8 +88,18 @@ def backup_command(argv):
     print(f"Database backed up to {backup_to(target)}")
 
 
+def report_command(argv):
+    directory = argv[2] if len(argv) > 2 else "backups"
+    create_table()
+    result = run_backup(directory)
+    print(f"Database snapshot: {result['database']}")
+    print(f"Report snapshot:   {result['csv']}")
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "backup":
         backup_command(sys.argv)
+    elif len(sys.argv) > 1 and sys.argv[1] == "report":
+        report_command(sys.argv)
     else:
         menu()
