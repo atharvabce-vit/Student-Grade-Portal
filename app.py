@@ -48,6 +48,9 @@ from database import (
     add_subject,
     attendance_for_student,
     attendance_summary,
+    bulk_restore,
+    bulk_soft_delete,
+    bulk_update_details,
     count_audit_log,
     count_students,
     create_api_key,
@@ -91,7 +94,7 @@ from database import (
 )
 from export import build_excel_bytes, export_to_csv
 from grading import calculate, get_grade
-from importer import import_students
+from importer import import_students, import_term_marks
 from logging_setup import configure_logging
 from mailer import MailNotConfigured, send_alert, send_report_card
 from pdf_reports import build_report_cards_bytes, build_transcript_pdf
@@ -685,6 +688,76 @@ def purge_student_page(reg_no):
 
 
 # --------------------------------------------------------------------------- #
+# bulk operations
+# --------------------------------------------------------------------------- #
+BULK_FIELDS = ["student_class", "section", "term", "academic_year", "gender"]
+
+
+@app.route("/bulk", methods=["GET", "POST"])
+def bulk_page():
+    guard = _guard("update")
+    if guard:
+        return guard
+
+    if request.method == "POST":
+        reg_nos = request.form.getlist("reg_no")
+        action = request.form.get("action", "")
+
+        if not reg_nos:
+            flash("Select at least one student.")
+            return redirect(url_for("bulk_page"))
+
+        if action == "update":
+            details = {field: request.form.get(field, "").strip() for field in BULK_FIELDS}
+            details = {field: value for field, value in details.items() if value != ""}
+            if not details:
+                flash("Choose at least one detail to set.")
+            else:
+                bulk_update_details(reg_nos, details)
+                audit("bulk_update", f"{len(reg_nos)} students", ", ".join(f"{k}={v}" for k, v in details.items()))
+                flash(f"Updated {len(reg_nos)} student(s).")
+        elif action == "delete":
+            if not can(current_role(), "delete"):
+                flash("Your role does not have permission to delete records.")
+            else:
+                bulk_soft_delete(reg_nos)
+                audit("bulk_delete", f"{len(reg_nos)} students")
+                flash(f"Moved {len(reg_nos)} student(s) to the archive.")
+        elif action == "restore":
+            if not can(current_role(), "archive"):
+                flash("Your role does not have permission to restore records.")
+            else:
+                bulk_restore(reg_nos)
+                audit("bulk_restore", f"{len(reg_nos)} students")
+                flash(f"Restored {len(reg_nos)} student(s).")
+        else:
+            flash("Unknown bulk action.")
+
+        return redirect(url_for("bulk_page"))
+
+    details = fetch_details_map()
+    students = [
+        {"reg_no": row[0], "name": row[1], **details.get(row[0], {})}
+        for row in fetch_all_students()
+    ]
+    archived = [
+        {"reg_no": row[0], "name": row[1], **details.get(row[0], {})}
+        for row in fetch_deleted_students()
+    ]
+
+    return render_template(
+        "bulk.html",
+        students=students,
+        archived=archived,
+        bulk_fields=BULK_FIELDS,
+        can_delete=can(current_role(), "delete"),
+        can_archive=can(current_role(), "archive"),
+        role=current_role(),
+        **subject_context(),
+    )
+
+
+# --------------------------------------------------------------------------- #
 # dashboard
 # --------------------------------------------------------------------------- #
 def cohort_trend_points():
@@ -1034,6 +1107,75 @@ def term_marks_page():
         students=students,
         role=current_role(),
         **subject_context(),
+    )
+
+
+@app.route("/term-marks/import", methods=["GET", "POST"])
+def term_marks_import_page():
+    guard = _guard("import")
+    if guard:
+        return guard
+
+    if request.method == "POST":
+        upload = request.files.get("file")
+
+        if upload is None or upload.filename == "":
+            flash("Please choose a file to upload.")
+            return redirect(url_for("term_marks_import_page"))
+
+        suffix = os.path.splitext(upload.filename)[1].lower()
+        handle, path = tempfile.mkstemp(suffix=suffix)
+        os.close(handle)
+
+        try:
+            upload.save(path)
+            records, errors = import_term_marks(path)
+        except ValueError as error:
+            flash(str(error))
+            return redirect(url_for("term_marks_import_page"))
+        finally:
+            if os.path.exists(path):
+                os.remove(path)
+
+        known = {row[0] for row in fetch_all_students()}
+        saved = 0
+        skipped = set()
+        for reg_no, subject, term, exam, mark in records:
+            if reg_no not in known:
+                skipped.add(reg_no)
+                continue
+            set_term_mark(reg_no, subject, term, exam, mark)
+            saved += 1
+
+        record_audit(current_username(), "term_marks_import", upload.filename, f"{saved} saved")
+        flash(f"Imported {saved} term mark(s) from {upload.filename}.")
+        if skipped:
+            flash("Skipped rows for unknown registration numbers: " + ", ".join(sorted(skipped)[:5]))
+        for error in errors[:10]:
+            flash(error)
+
+        return redirect(url_for("term_marks_page"))
+
+    return render_template("term_import.html", role=current_role(), **subject_context())
+
+
+@app.route("/term-marks/template")
+def term_marks_template_page():
+    if current_role() is None:
+        return redirect(url_for("login_page"))
+
+    subjects = subject_names()
+    rows = ["Reg No,Term,Exam," + ",".join(subjects)]
+    rows.append(
+        f"SAMPLE001,{TERMS[0] if TERMS else 'Term 1'},{EXAMS[0] if EXAMS else 'Unit Test'},"
+        + ",".join(["40"] * len(subjects))
+    )
+    content = "\n".join(rows) + "\n"
+
+    return Response(
+        content,
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=term_marks_import_template.csv"},
     )
 
 
