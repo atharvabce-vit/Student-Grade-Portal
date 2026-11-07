@@ -18,7 +18,10 @@ jobs:
           pip install -r requirements-dev.txt
       - name: Lint
         run: ruff check .
+      - name: Security scan
+        run: bandit -q -r . -c bandit.yaml
       - name: Run tests with coverage
         run: |
           coverage run -m unittest discover -v
           coverage report -m
+          coverage report --fail-under=60
