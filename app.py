@@ -29,6 +29,7 @@ from config import (
     DEBUG,
     ENV,
     EXAMS,
+    GRADE_SCALE,
     LOGIN_RATE_LIMIT,
     MAX_MARK,
     PAGE_SIZE,
@@ -63,9 +64,11 @@ from database import (
     mark_attendance,
     marks_for_subject,
     record_audit,
+    remove_grade_rule,
     remove_subject,
     restore_student,
     search_students,
+    set_grade_rule,
     set_subject_mark,
     set_subject_weight,
     set_term_mark,
@@ -85,6 +88,8 @@ from logging_setup import configure_logging
 from mailer import MailNotConfigured, send_report_card
 from pdf_reports import build_report_cards_bytes, build_transcript_pdf
 from reports import class_statistics, filter_students, sort_students
+from rules import dump_scale, load_rules, parse_scale
+from rules import for_class as rules_for_class
 from security import RateLimiter, apply_security_headers, client_ip
 from transcripts import build_transcript, cumulative
 from users import (
@@ -101,6 +106,7 @@ from users import (
     set_role,
     verify_password,
 )
+from validators import validate_details
 
 configure_logging()
 logger = logging.getLogger("sgp.app")
@@ -195,22 +201,25 @@ def subject_context():
     }
 
 
-def build_rows(students):
+def build_rows(students, rules=None):
     subjects = subject_names()
     weights = subject_weights()
     details = fetch_details_map()
+    if rules is None:
+        rules = load_rules()
     rows = []
     for row in students:
         marks = list(row[2:2 + len(subjects)])
-        total, percentage, result = calculate(marks, weights)
         info = details.get(row[0], {})
+        rule = rules_for_class(info.get("student_class", ""), rules)
+        total, percentage, result = calculate(marks, weights, rule["pass_mark"])
         rows.append({
             "reg_no": row[0],
             "name": row[1],
             "marks": marks,
             "total": total,
             "percentage": percentage,
-            "grade": get_grade(percentage),
+            "grade": get_grade(percentage, rule["grade_scale"]),
             "result": result,
             "student_class": info.get("student_class", ""),
             "section": info.get("section", ""),
@@ -460,13 +469,18 @@ def add_student_page():
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         marks, error = read_marks(request.form)
+        details = read_details(request.form)
+        detail_errors = validate_details(details)
 
         if name == "":
             flash("Student name is required.")
         elif error != "":
             flash(error)
+        elif detail_errors:
+            for message in detail_errors:
+                flash(message)
         else:
-            reg_no = insert_student(name, marks, read_details(request.form))
+            reg_no = insert_student(name, marks, details)
             audit("add_student", reg_no, name)
             flash(f"Student {name} added with registration number {reg_no}.")
             return redirect(url_for("index"))
@@ -490,14 +504,19 @@ def edit_student_page(reg_no):
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         marks, error = read_marks(request.form)
+        details = read_details(request.form)
+        detail_errors = validate_details(details)
 
         if name == "":
             flash("Student name is required.")
         elif error != "":
             flash(error)
+        elif detail_errors:
+            for message in detail_errors:
+                flash(message)
         else:
             update_student_record(reg_no, name, marks)
-            update_student_details(reg_no, read_details(request.form))
+            update_student_details(reg_no, details)
             audit("update_student", reg_no, name)
             flash("Record updated successfully.")
             return redirect(url_for("index"))
@@ -969,6 +988,76 @@ def subject_weight_page():
         audit("set_subject_weight", name, str(weight))
         flash(f"Weight for {name} set to {weight}.")
     return redirect(url_for("subjects_page"))
+
+
+# --------------------------------------------------------------------------- #
+# grade rules admin
+# --------------------------------------------------------------------------- #
+@app.route("/grade-rules")
+def grade_rules_page():
+    guard = _guard("graderules")
+    if guard:
+        return guard
+
+    rules = load_rules()
+    display = sorted(
+        (
+            student_class,
+            rule["pass_mark"],
+            "\n".join(f"{minimum} {grade}" for minimum, grade in rule["grade_scale"]),
+        )
+        for student_class, rule in rules.items()
+    )
+    classes = sorted({
+        info.get("student_class", "")
+        for info in fetch_details_map().values()
+        if info.get("student_class")
+    })
+
+    return render_template(
+        "grade_rules.html",
+        rules=display,
+        classes=classes,
+        default_scale="\n".join(f"{minimum} {grade}" for minimum, grade in GRADE_SCALE),
+        role=current_role(),
+        **subject_context(),
+    )
+
+
+@app.route("/grade-rules/set", methods=["POST"])
+def set_grade_rule_page():
+    guard = _guard("graderules")
+    if guard:
+        return guard
+
+    student_class = request.form.get("student_class", "").strip()
+    value = request.form.get("pass_mark", "").strip()
+    scale = parse_scale(request.form.get("grade_scale", ""))
+
+    if student_class == "":
+        flash("Enter a class name.")
+    elif not value.isdigit() or not (0 <= int(value) <= MAX_MARK):
+        flash(f"The pass mark must be a whole number between 0 and {MAX_MARK}.")
+    elif not scale:
+        flash("Enter at least one line for the grade scale, for example '90 A+'.")
+    else:
+        set_grade_rule(student_class, int(value), dump_scale(scale))
+        audit("set_grade_rule", student_class, value)
+        flash(f"Grade rules saved for {student_class}.")
+    return redirect(url_for("grade_rules_page"))
+
+
+@app.route("/grade-rules/remove", methods=["POST"])
+def remove_grade_rule_page():
+    guard = _guard("graderules")
+    if guard:
+        return guard
+
+    student_class = request.form.get("student_class", "").strip()
+    remove_grade_rule(student_class)
+    audit("remove_grade_rule", student_class)
+    flash(f"Grade rules for {student_class} removed; the default scale applies again.")
+    return redirect(url_for("grade_rules_page"))
 
 
 # --------------------------------------------------------------------------- #
