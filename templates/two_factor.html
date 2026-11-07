@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Two-factor authentication</h2>
+
+{% if enabled %}
+<p class="hint">
+  Two-factor login is currently <strong>enabled</strong>. You will be asked for a
+  code from your authenticator app each time you sign in.
+</p>
+<form method="post" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="action" value="disable">
+  <button type="submit">Disable two-factor</button>
+</form>
+{% else %}
+<p class="hint">
+  Add the setup key below to an authenticator app (Google Authenticator, Authy, ...),
+  then enter the 6-digit code it shows to switch two-factor login on.
+</p>
+
+<div class="card">
+  <p>Setup key: <code>{{ secret }}</code></p>
+  <p>Or use this link: <code>{{ uri }}</code></p>
+</div>
+
+<form method="post" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label>Code
+    <input type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required>
+  </label>
+  <button type="submit">Enable two-factor</button>
+</form>
+{% endif %}
+{% endblock %}
