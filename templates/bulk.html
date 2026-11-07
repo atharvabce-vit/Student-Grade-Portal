@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Bulk Operations</h2>
+
+<p class="hint">Select students below and apply the same change to all of them at once.</p>
+
+<form method="post" id="bulk-form">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <div class="card">
+    <h3>Set shared details</h3>
+    <p class="hint">Leave a field blank to keep its current value.</p>
+    <label>Class <input type="text" name="student_class" placeholder="e.g. 10A"></label>
+    <label>Section <input type="text" name="section" placeholder="e.g. A"></label>
+    <label>Academic year <input type="text" name="academic_year" placeholder="e.g. 2025-26"></label>
+    <label>Term
+      <select name="term">
+        <option value="">(leave unchanged)</option>
+        {% for term in term_options %}<option value="{{ term }}">{{ term }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Gender
+      <select name="gender">
+        <option value="">(leave unchanged)</option>
+        <option value="Male">Male</option>
+        <option value="Female">Female</option>
+        <option value="Other">Other</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="actions">
+    <button type="submit" name="action" value="update">Apply to selected</button>
+    {% if can_delete %}
+    <button type="submit" name="action" value="delete" class="danger"
+            onclick="return confirm('Move the selected students to the archive?');">Archive selected</button>
+    {% endif %}
+    {% if can_archive %}
+    <button type="submit" name="action" value="restore"
+            onclick="return confirm('Restore the selected archived students?');">Restore selected</button>
+    {% endif %}
+  </div>
+
+  {% if students %}
+  <h3>Active students</h3>
+  <table>
+    <thead>
+      <tr>
+        <th><input type="checkbox" onclick="toggleAll(this)" aria-label="Select all"></th>
+        <th>Reg No</th>
+        <th>Name</th>
+        <th>Class</th>
+        <th>Section</th>
+        <th>Term</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for student in students %}
+      <tr>
+        <td><input type="checkbox" name="reg_no" value="{{ student.reg_no }}" class="bulk-row"></td>
+        <td>{{ student.reg_no }}</td>
+        <td>{{ student.name }}</td>
+        <td>{{ student.student_class or "-" }}</td>
+        <td>{{ student.section or "-" }}</td>
+        <td>{{ student.term or "-" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p>No active students.</p>
+  {% endif %}
+
+  {% if archived %}
+  <h3>Archived students</h3>
+  <table>
+    <thead>
+      <tr>
+        <th><input type="checkbox" onclick="toggleAll(this)" aria-label="Select all"></th>
+        <th>Reg No</th>
+        <th>Name</th>
+        <th>Class</th>
+        <th>Section</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for student in archived %}
+      <tr>
+        <td><input type="checkbox" name="reg_no" value="{{ student.reg_no }}" class="bulk-row"></td>
+        <td>{{ student.reg_no }}</td>
+        <td>{{ student.name }}</td>
+        <td>{{ student.student_class or "-" }}</td>
+        <td>{{ student.section or "-" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</form>
+
+<script>
+  function toggleAll(box) {
+    document.querySelectorAll('.bulk-row').forEach(function (item) { item.checked = box.checked; });
+  }
+</script>
+{% endblock %}
