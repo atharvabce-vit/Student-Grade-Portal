@@ -132,6 +132,71 @@ class PortalFeatureTests(unittest.TestCase):
         present = {row[0]: row[2] for row in database.attendance_summary()}
         self.assertEqual(present[reg_no], 1)
 
+    # ------------------------------------------------------------------ #
+    # student self-service portal
+    # ------------------------------------------------------------------ #
+    def _login_as_student(self, reg_no):
+        users.create_user("stu", "student-pass-123", "student", reg_no)
+        with self.client.session_transaction() as sess:
+            sess["username"] = "stu"
+            sess["role"] = "student"
+            sess["reg_no"] = reg_no
+            sess["sv"] = users.session_version("stu")
+
+    def test_student_login_links_registration(self):
+        reg_no = database.insert_student("A", [40, 40, 40, 40, 40])
+        self._login_as_student(reg_no)
+        response = self.client.get("/me")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(reg_no, response.get_data(as_text=True))
+
+    def test_student_cannot_reach_staff_pages(self):
+        reg_no = database.insert_student("A", [40, 40, 40, 40, 40])
+        self._login_as_student(reg_no)
+        for path in ["/users", "/audit", "/archive", "/subjects"]:
+            response = self.client.get(path)
+            self.assertEqual(response.status_code, 302, path)
+            self.assertIn("/me", response.headers.get("Location", ""))
+
+    def test_student_sees_only_their_own_transcript(self):
+        mine = database.insert_student("A", [0, 0, 0, 0, 0])
+        database.insert_student("B", [0, 0, 0, 0, 0])
+        self._login_as_student(mine)
+        self.assertEqual(self.client.get("/me/transcript").status_code, 200)
+        self.assertEqual(self.client.get("/student/SGP9999").status_code, 302)
+
+    def test_creating_student_user_requires_valid_registration(self):
+        response = self.client.post(
+            "/users/add",
+            data={"username": "stu", "password": "student-pass-123",
+                  "role": "student", "linked_reg_no": "SGP0000"},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIsNone(users.find_user("stu"))
+
+    # ------------------------------------------------------------------ #
+    # self-service password change
+    # ------------------------------------------------------------------ #
+    def test_change_password_flow(self):
+        response = self.client.post(
+            "/password",
+            data={"current_password": "admin123", "new_password": "brand-new-pass",
+                  "confirm_password": "brand-new-pass"},
+        )
+        self.assertEqual(response.status_code, 302)
+        user = users.find_user("admin")
+        self.assertTrue(users.verify_password(user["password_hash"], "brand-new-pass"))
+
+    def test_change_password_rejects_wrong_current(self):
+        response = self.client.post(
+            "/password",
+            data={"current_password": "wrong", "new_password": "brand-new-pass",
+                  "confirm_password": "brand-new-pass"},
+        )
+        self.assertEqual(response.status_code, 200)
+        user = users.find_user("admin")
+        self.assertTrue(users.verify_password(user["password_hash"], "admin123"))
+
 
 if __name__ == "__main__":
     unittest.main()
